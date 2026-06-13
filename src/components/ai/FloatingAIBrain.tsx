@@ -113,10 +113,21 @@ export function FloatingAIBrain() {
     setIsTyping(true);
 
     try {
+      const profile = useAppStore.getState().profile;
+      const classes = useAppStore.getState().classes;
+      const tasks = useAppStore.getState().tasks;
+
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ 
+          message: text,
+          context: {
+            profile,
+            classes,
+            tasks: tasks.filter(t => !t.completed) // Only send incomplete tasks
+          }
+        }),
       });
       const data = await res.json();
 

@@ -1,7 +1,6 @@
 'use client';
 
 import { Bell, Search } from 'lucide-react';
-import { mockUser } from '@/lib/mockData';
 import { useAppStore } from '@/store/useAppStore';
 import { useEffect, useState } from 'react';
 
@@ -22,6 +21,7 @@ function formatDate(date: Date): string {
 
 export function Header() {
   const notices = useAppStore((s) => s.notices);
+  const profile = useAppStore((s) => s.profile);
   const unreadCount = notices.filter((n) => !n.isRead).length;
   const [greeting, setGreeting] = useState('');
   const [dateStr, setDateStr] = useState('');
@@ -36,7 +36,7 @@ export function Header() {
     <header className="h-16 border-b border-slate-800 flex items-center justify-between px-4 md:px-6 bg-slate-950/80 backdrop-blur-md sticky top-0 z-30">
       <div>
         <p className="text-sm font-medium text-slate-200" suppressHydrationWarning>
-          {greeting ? `${greeting}, ${mockUser.name.split(' ')[0]}` : '\u00A0'}
+          {greeting ? `${greeting}, ${profile?.name?.split(' ')[0] || 'Student'}` : '\u00A0'}
         </p>
         <p className="text-xs text-slate-500" suppressHydrationWarning>{dateStr || '\u00A0'}</p>
       </div>
@@ -56,7 +56,7 @@ export function Header() {
         </button>
         {/* Avatar */}
         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center text-xs font-bold text-white cursor-pointer hover:shadow-lg hover:shadow-cyan-500/20 transition-shadow">
-          {mockUser.name.split(' ').map((n) => n[0]).join('')}
+          {profile?.name ? profile.name.split(' ').map((n) => n[0]).join('') : 'U'}
         </div>
       </div>
     </header>

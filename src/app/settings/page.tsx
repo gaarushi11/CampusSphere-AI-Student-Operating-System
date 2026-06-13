@@ -7,17 +7,7 @@ import {
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { mockUser } from '@/lib/mockData';
-
-const profileFields = [
-  { label: 'Full Name', value: mockUser.name, icon: User },
-  { label: 'Email', value: mockUser.email, icon: Mail },
-  { label: 'Roll Number', value: mockUser.rollNumber, icon: Hash },
-  { label: 'Department', value: mockUser.major, icon: BookOpen },
-  { label: 'Semester', value: `Semester ${mockUser.semester}`, icon: GraduationCap },
-  { label: 'CGPA', value: `${mockUser.cgpa} / 10.0`, icon: Award },
-  { label: 'Hostel Room', value: mockUser.hostelRoom, icon: Building },
-];
+import { useAppStore } from '@/store/useAppStore';
 
 const settingsSections = [
   {
@@ -60,6 +50,18 @@ const settingsSections = [
 ];
 
 export default function SettingsPage() {
+  const profile = useAppStore((s) => s.profile);
+  
+  const profileFields = [
+    { label: 'Full Name', value: profile?.name || 'Loading...', icon: User },
+    { label: 'Email', value: profile?.email || 'Loading...', icon: Mail },
+    { label: 'Roll Number', value: profile?.rollNumber || 'Loading...', icon: Hash },
+    { label: 'Department', value: profile?.major || 'Loading...', icon: BookOpen },
+    { label: 'Semester', value: `Semester ${profile?.semester || 1}`, icon: GraduationCap },
+    { label: 'CGPA', value: `${profile?.cgpa || 0} / 10.0`, icon: Award },
+    { label: 'Hostel Room', value: profile?.hostelRoom || 'Loading...', icon: Building },
+  ];
+
   return (
     <div className="space-y-6 max-w-4xl">
       {/* Header */}
@@ -83,13 +85,13 @@ export default function SettingsPage() {
           <CardContent>
             <div className="flex items-center gap-4 mb-6 pb-6 border-b border-slate-800">
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center text-xl font-bold text-white shadow-lg shadow-violet-500/20">
-                {mockUser.name.split(' ').map((n) => n[0]).join('')}
+                {profile?.name ? profile.name.split(' ').map((n) => n[0]).join('') : 'U'}
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-slate-100">{mockUser.name}</h3>
-                <p className="text-sm text-slate-400">{mockUser.major}</p>
+                <h3 className="text-lg font-semibold text-slate-100">{profile?.name || 'User'}</h3>
+                <p className="text-sm text-slate-400">{profile?.major || 'B.Tech'}</p>
                 <Badge className="mt-1 text-[10px] bg-cyan-500/15 text-cyan-400 border-cyan-500/30">
-                  Semester {mockUser.semester} · CGPA {mockUser.cgpa}
+                  Semester {profile?.semester || 1} · CGPA {profile?.cgpa || 0}
                 </Badge>
               </div>
             </div>

@@ -6,11 +6,12 @@ import { Check, Clock, MapPin, User as UserIcon } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { todayClasses } from '@/lib/mockData';
+import { useAppStore } from '@/store/useAppStore';
 import { isCurrentClass, isPastClass } from '@/lib/utils';
 
 export function TodayTimeline() {
   const [, setTick] = useState(0);
+  const classes = useAppStore((s) => s.classes);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -28,14 +29,14 @@ export function TodayTimeline() {
             Today&apos;s Timeline
           </CardTitle>
           <Badge variant="secondary" className="text-[10px]">
-            {todayClasses.length} classes
+            {classes.length} classes
           </Badge>
         </div>
       </CardHeader>
       <CardContent>
         <ScrollArea className="h-[380px] pr-3">
           <div className="space-y-0">
-            {todayClasses.map((cls, index) => {
+            {classes.map((cls, index) => {
               const isCurrent = isCurrentClass(cls.startHour, cls.startMinute, cls.endHour, cls.endMinute);
               const isPast = isPastClass(cls.endHour, cls.endMinute);
 
@@ -48,7 +49,7 @@ export function TodayTimeline() {
                   className="relative"
                 >
                   {/* Timeline connector line */}
-                  {index < todayClasses.length - 1 && (
+                  {index < classes.length - 1 && (
                     <div className="absolute left-[15px] top-[36px] bottom-0 w-[2px] bg-gradient-to-b from-slate-700 to-slate-800" />
                   )}
 

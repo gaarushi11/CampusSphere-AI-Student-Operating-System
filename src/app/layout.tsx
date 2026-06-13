@@ -19,21 +19,34 @@ export const metadata: Metadata = {
   icons: { icon: '/favicon.ico' },
 };
 
-export default function RootLayout({
+import { createClient } from '@/utils/supabase/server';
+
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
   return (
     <html lang="en" className={inter.variable} suppressHydrationWarning>
       <body className="bg-slate-950 text-slate-100 min-h-screen overflow-x-hidden">
-        <Sidebar />
-        <MobileNav />
-        <main className="md:ml-[240px] min-h-screen flex flex-col pb-16 md:pb-0">
-          <Header />
-          <div className="flex-1 p-4 md:p-6">{children}</div>
-        </main>
-        <FloatingAIBrain />
+        {user ? (
+          <>
+            <Sidebar />
+            <MobileNav />
+            <main className="md:ml-[240px] min-h-screen flex flex-col pb-16 md:pb-0">
+              <Header />
+              <div className="flex-1 p-4 md:p-6">{children}</div>
+            </main>
+            <FloatingAIBrain />
+          </>
+        ) : (
+          <main className="min-h-screen flex flex-col items-center justify-center p-4">
+            {children}
+          </main>
+        )}
       </body>
     </html>
   );

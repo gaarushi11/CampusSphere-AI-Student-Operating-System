@@ -1,12 +1,12 @@
-export interface User {
-  id: string;
+export interface Profile {
+  id: string; // references auth.users
   name: string;
+  email: string;
   rollNumber: string;
   major: string;
   semester: number;
   cgpa: number;
   avatarUrl?: string;
-  email: string;
   hostelRoom: string;
 }
 

@@ -9,8 +9,24 @@ import { AttendanceWidget } from './AttendanceWidget';
 import { CampusRadar } from './CampusRadar';
 import { useAppStore } from '@/store/useAppStore';
 
+import { useEffect } from 'react';
+
 export function DashboardGrid() {
   const setIsChatOpen = useAppStore((s) => s.setIsChatOpen);
+  const fetchData = useAppStore((s) => s.fetchData);
+  const isLoading = useAppStore((s) => s.isLoading);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="w-8 h-8 border-4 border-cyan-500/30 border-t-cyan-400 rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

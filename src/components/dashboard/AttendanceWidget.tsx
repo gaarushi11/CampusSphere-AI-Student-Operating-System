@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { attendanceStats, overallAttendance } from '@/lib/mockData';
+import { useAppStore } from '@/store/useAppStore';
 import { cn } from '@/lib/utils';
 
 const RADIUS = 54;
@@ -36,17 +36,31 @@ function getStatusTextColor(status: string): string {
 }
 
 function classesNeeded(attended: number, total: number, target: number = 75): number {
-  // How many consecutive classes needed to reach target%
-  // (attended + x) / (total + x) >= target/100
-  // 100*(attended + x) >= target*(total + x)
-  // 100*attended + 100x >= target*total + target*x
-  // x*(100 - target) >= target*total - 100*attended
-  // x >= (target*total - 100*attended) / (100 - target)
   const needed = Math.ceil((target * total - 100 * attended) / (100 - target));
   return Math.max(0, needed);
 }
 
 export function AttendanceWidget() {
+  const classes = useAppStore((s) => s.classes);
+  
+  // Calculate dynamic stats from classes
+  const uniqueSubjects = Array.from(new Set(classes.map(c => c.shortCode)));
+  const attendanceStats = uniqueSubjects.map(shortCode => {
+    const classObj = classes.find(c => c.shortCode === shortCode);
+    const percentage = classObj?.attendancePercentage || 100;
+    const total = 40; // Assumed total for demo purposes since schema only holds percentage
+    const attended = Math.floor((percentage / 100) * total);
+    let status = 'safe';
+    if (percentage < 75) status = 'danger';
+    else if (percentage < 80) status = 'warning';
+    
+    return { shortCode, percentage, status, attended, total };
+  });
+
+  const overallAttendance = classes.length > 0 
+    ? Math.round(classes.reduce((acc, curr) => acc + curr.attendancePercentage, 0) / classes.length)
+    : 100;
+
   const [animatedOffset, setAnimatedOffset] = useState(CIRCUMFERENCE);
   const [mounted, setMounted] = useState(false);
 
@@ -57,7 +71,7 @@ export function AttendanceWidget() {
       setAnimatedOffset(offset);
     }, 300);
     return () => clearTimeout(timer);
-  }, []);
+  }, [overallAttendance]);
 
   const ringColor = getColorForPercentage(overallAttendance);
 

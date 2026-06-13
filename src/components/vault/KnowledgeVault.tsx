@@ -20,6 +20,8 @@ const fileTypeConfig: Record<string, { icon: typeof FileText; color: string; bg:
   DOCX: { icon: FileImage, color: 'text-blue-400', bg: 'bg-blue-500/10' },
 };
 
+import { createClient } from '@/utils/supabase/client';
+
 export function KnowledgeVault() {
   const documents = useAppStore((s) => s.documents);
   const addDocument = useAppStore((s) => s.addDocument);
@@ -34,53 +36,77 @@ export function KnowledgeVault() {
   );
 
   const handleDrop = useCallback(
-    (e: React.DragEvent) => {
+    async (e: React.DragEvent | React.ChangeEvent<HTMLInputElement>) => {
       e.preventDefault();
       setIsDragOver(false);
 
-      const files = Array.from(e.dataTransfer.files);
+      let files: File[] = [];
+      if ('dataTransfer' in e) {
+        files = Array.from(e.dataTransfer.files);
+      } else if (e.target.files) {
+        files = Array.from(e.target.files);
+      }
+
       if (files.length === 0) return;
 
       setUploading(true);
-      // Simulate upload delay
-      setTimeout(() => {
-        files.forEach((file) => {
-          const ext = file.name.split('.').pop()?.toUpperCase() as 'PDF' | 'PPTX' | 'DOCX';
-          const newDoc: Document = {
-            id: `doc-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-            name: file.name,
-            type: ext === 'PDF' || ext === 'PPTX' || ext === 'DOCX' ? ext : 'PDF',
-            size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-            uploadedAt: new Date().toISOString(),
-            subject: 'User Upload',
-            isIndexed: false,
-            pageCount: Math.floor(Math.random() * 50) + 5,
-          };
-          addDocument(newDoc);
-        });
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (!user) {
         setUploading(false);
-      }, 2000);
+        return;
+      }
+
+      for (const file of files) {
+        const ext = file.name.split('.').pop()?.toUpperCase() as 'PDF' | 'PPTX' | 'DOCX';
+        const fileType = ext === 'PDF' || ext === 'PPTX' || ext === 'DOCX' ? ext : 'PDF';
+        const fileSizeStr = `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
+        
+        // Clean filename for storage
+        const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+        const filePath = `${user.id}/${Date.now()}_${safeName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('vault_files')
+          .upload(filePath, file);
+
+        if (uploadError) {
+          console.error('Upload failed:', uploadError);
+          continue;
+        }
+
+        // 2. Add to database via store
+        const documentId = await addDocument({
+          name: file.name,
+          type: fileType,
+          size: fileSizeStr,
+          subject: 'Uploaded Document',
+          isIndexed: false,
+          pageCount: 1,
+        });
+
+        if (!documentId) continue;
+
+        // 3. Trigger backend indexing (Bedrock embeddings)
+        fetch('/api/documents/index', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            documentId,
+            filePath,
+            userId: user.id,
+          })
+        }).then(res => {
+          if (!res.ok) console.error('Indexing failed', res);
+          // In a real app, we would refresh the store or use realtime subscriptions
+        });
+      }
+
+      setUploading(false);
     },
     [addDocument]
   );
-
-  const simulateUpload = () => {
-    setUploading(true);
-    setTimeout(() => {
-      const newDoc: Document = {
-        id: `doc-${Date.now()}`,
-        name: 'AWS_Solutions_Architect_Notes.pdf',
-        type: 'PDF',
-        size: '4.5 MB',
-        uploadedAt: new Date().toISOString(),
-        subject: 'CS401 — Cloud Computing',
-        isIndexed: false,
-        pageCount: 35,
-      };
-      addDocument(newDoc);
-      setUploading(false);
-    }, 2000);
-  };
 
   return (
     <div className="space-y-6">
@@ -119,8 +145,16 @@ export function KnowledgeVault() {
                 ? 'bg-cyan-500/10 border-cyan-500/30'
                 : 'bg-slate-900/50 hover:bg-slate-800/30'
             )}
-            onClick={simulateUpload}
+            onClick={() => document.getElementById('file-upload')?.click()}
           >
+            <input
+              id="file-upload"
+              type="file"
+              className="hidden"
+              multiple
+              accept=".pdf,.pptx,.docx"
+              onChange={handleDrop}
+            />
             {uploading ? (
               <motion.div
                 initial={{ scale: 0.8 }}

@@ -24,9 +24,15 @@ const priorityConfig: Record<string, string> = {
   'Low': 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
 };
 
+import { useState } from 'react';
+
 export function TaskPrioritizer() {
   const tasks = useAppStore((s) => s.tasks);
   const toggleTask = useAppStore((s) => s.toggleTask);
+  const addTask = useAppStore((s) => s.addTask);
+
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [isAdding, setIsAdding] = useState(false);
 
   // Sort: Incomplete High → Medium → Low → Completed
   const sortedTasks = [...tasks].sort((a, b) => {
@@ -35,9 +41,31 @@ export function TaskPrioritizer() {
     return priorityOrder[a.priority] - priorityOrder[b.priority];
   });
 
+  const handleAddTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTaskTitle.trim()) return;
+
+    setIsAdding(true);
+    // Simple heuristic for demo: assume due tomorrow at 11:59 PM
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(23, 59, 0, 0);
+
+    await addTask({
+      title: newTaskTitle,
+      description: 'Added from dashboard',
+      subject: 'General',
+      priority: 'Medium',
+      dueDate: tomorrow.toISOString(),
+    });
+
+    setNewTaskTitle('');
+    setIsAdding(false);
+  };
+
   return (
-    <Card className="h-full">
-      <CardHeader>
+    <Card className="h-full flex flex-col">
+      <CardHeader className="pb-3 border-b border-slate-800">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-cyan-400" />
@@ -51,9 +79,28 @@ export function TaskPrioritizer() {
           </span>
         </div>
       </CardHeader>
-      <CardContent>
-        <ScrollArea className="h-[380px] pr-2">
-          <div className="space-y-2">
+      <CardContent className="flex-1 p-0 pt-3">
+        <div className="px-6 pb-3">
+          <form onSubmit={handleAddTask} className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Add a new task..."
+              value={newTaskTitle}
+              onChange={(e) => setNewTaskTitle(e.target.value)}
+              className="flex-1 bg-slate-900/50 border border-slate-800 rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-cyan-500/50"
+              disabled={isAdding}
+            />
+            <button
+              type="submit"
+              disabled={isAdding || !newTaskTitle.trim()}
+              className="bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 rounded-lg px-3 py-1.5 text-sm font-medium hover:bg-cyan-500/30 transition-colors disabled:opacity-50"
+            >
+              {isAdding ? 'Adding...' : 'Add'}
+            </button>
+          </form>
+        </div>
+        <ScrollArea className="h-[320px] px-6 pb-6">
+          <div className="space-y-2 pr-2">
             {sortedTasks.map((task, index) => {
               const source = sourceConfig[task.source];
               const SourceIcon = source?.icon || PenLine;
@@ -72,7 +119,7 @@ export function TaskPrioritizer() {
                       : 'bg-slate-800/30 border-slate-800 hover:bg-slate-800/60 hover:border-slate-700',
                     isHighAndActive && 'pulse-high-priority border-rose-500/30'
                   )}
-                  onClick={() => toggleTask(task.id)}
+                  onClick={() => toggleTask(task.id, task.completed)}
                 >
                   <div className="flex items-start gap-3">
                     {/* Checkbox */}
@@ -80,7 +127,7 @@ export function TaskPrioritizer() {
                       className="mt-0.5 flex-shrink-0 transition-transform hover:scale-110"
                       onClick={(e) => {
                         e.stopPropagation();
-                        toggleTask(task.id);
+                        toggleTask(task.id, task.completed);
                       }}
                       aria-label={task.completed ? 'Mark incomplete' : 'Mark complete'}
                     >
