@@ -39,7 +39,8 @@ export async function signup(formData: FormData) {
   const { error } = await supabase.auth.signUp(data)
 
   if (error) {
-    redirect('/signup?error=Could not create user')
+    console.error('Signup error:', error.message);
+    redirect(`/signup?error=${encodeURIComponent(error.message)}`)
   }
 
   // Supabase by default requires email confirmation, but for this demo we'll assume it's disabled or we just redirect
