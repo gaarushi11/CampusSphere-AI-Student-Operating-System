@@ -49,9 +49,27 @@ const settingsSections = [
   },
 ];
 
+import { useState } from 'react';
+
 export default function SettingsPage() {
   const profile = useAppStore((s) => s.profile);
+  const updateProfile = useAppStore((s) => s.updateProfile);
   
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: profile?.name || '',
+    rollNumber: profile?.rollNumber || '',
+    major: profile?.major || '',
+    semester: profile?.semester || 1,
+    cgpa: profile?.cgpa || 0,
+    hostelRoom: profile?.hostelRoom || '',
+  });
+
+  const handleSave = async () => {
+    await updateProfile(editForm);
+    setIsEditing(false);
+  };
+
   const profileFields = [
     { label: 'Full Name', value: profile?.name || 'Loading...', icon: User },
     { label: 'Email', value: profile?.email || 'Loading...', icon: Mail },
@@ -63,7 +81,7 @@ export default function SettingsPage() {
   ];
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 max-w-4xl pb-20">
       {/* Header */}
       <div>
         <h2 className="text-xl font-bold text-slate-100">Settings</h2>
@@ -79,8 +97,28 @@ export default function SettingsPage() {
         transition={{ duration: 0.4 }}
       >
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-base">Profile Information</CardTitle>
+            <button
+              onClick={() => {
+                if (isEditing) {
+                  handleSave();
+                } else {
+                  setEditForm({
+                    name: profile?.name || '',
+                    rollNumber: profile?.rollNumber || '',
+                    major: profile?.major || '',
+                    semester: profile?.semester || 1,
+                    cgpa: profile?.cgpa || 0,
+                    hostelRoom: profile?.hostelRoom || '',
+                  });
+                  setIsEditing(true);
+                }
+              }}
+              className="text-xs px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-400 rounded-md transition-colors"
+            >
+              {isEditing ? 'Save Changes' : 'Edit Profile'}
+            </button>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-4 mb-6 pb-6 border-b border-slate-800">
@@ -95,20 +133,80 @@ export default function SettingsPage() {
                 </Badge>
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {profileFields.map(({ label, value, icon: Icon }) => (
-                <div
-                  key={label}
-                  className="flex items-center gap-3 p-3 rounded-lg bg-slate-800/30 border border-slate-800"
-                >
-                  <Icon className="w-4 h-4 text-slate-500 flex-shrink-0" />
-                  <div>
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wider">{label}</p>
-                    <p className="text-sm text-slate-200">{value}</p>
-                  </div>
+            
+            {isEditing ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-slate-500 uppercase tracking-wider">Full Name</label>
+                  <input 
+                    type="text" 
+                    value={editForm.name} 
+                    onChange={e => setEditForm({...editForm, name: e.target.value})}
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200"
+                  />
                 </div>
-              ))}
-            </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-slate-500 uppercase tracking-wider">Roll Number</label>
+                  <input 
+                    type="text" 
+                    value={editForm.rollNumber} 
+                    onChange={e => setEditForm({...editForm, rollNumber: e.target.value})}
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-slate-500 uppercase tracking-wider">Department</label>
+                  <input 
+                    type="text" 
+                    value={editForm.major} 
+                    onChange={e => setEditForm({...editForm, major: e.target.value})}
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-slate-500 uppercase tracking-wider">Semester</label>
+                  <input 
+                    type="number" 
+                    value={editForm.semester} 
+                    onChange={e => setEditForm({...editForm, semester: parseInt(e.target.value) || 1})}
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-slate-500 uppercase tracking-wider">CGPA</label>
+                  <input 
+                    type="number" step="0.01" 
+                    value={editForm.cgpa} 
+                    onChange={e => setEditForm({...editForm, cgpa: parseFloat(e.target.value) || 0})}
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-slate-500 uppercase tracking-wider">Hostel Room</label>
+                  <input 
+                    type="text" 
+                    value={editForm.hostelRoom} 
+                    onChange={e => setEditForm({...editForm, hostelRoom: e.target.value})}
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {profileFields.map(({ label, value, icon: Icon }) => (
+                  <div
+                    key={label}
+                    className="flex items-center gap-3 p-3 rounded-lg bg-slate-800/30 border border-slate-800"
+                  >
+                    <Icon className="w-4 h-4 text-slate-500 flex-shrink-0" />
+                    <div>
+                      <p className="text-[10px] text-slate-500 uppercase tracking-wider">{label}</p>
+                      <p className="text-sm text-slate-200">{value}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </motion.div>

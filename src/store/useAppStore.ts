@@ -21,6 +21,7 @@ interface AppState {
   addClass: (cls: Partial<ClassSession>) => Promise<void>;
   addMessage: (msg: ChatMessage) => void;
   addDocument: (doc: Partial<Document>) => Promise<string | undefined>;
+  updateProfile: (updates: Partial<Profile>) => Promise<void>;
   setIsChatOpen: (open: boolean) => void;
   setActiveNavItem: (item: string) => void;
 }
@@ -333,6 +334,35 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
 
     return data.id;
+  },
+
+  updateProfile: async (updates) => {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // Optimistic UI update
+    set((state) => ({
+      profile: state.profile ? { ...state.profile, ...updates } : null,
+    }));
+
+    // Update DB
+    const dbUpdates: any = {};
+    if (updates.name !== undefined) dbUpdates.name = updates.name;
+    if (updates.rollNumber !== undefined) dbUpdates.roll_number = updates.rollNumber;
+    if (updates.major !== undefined) dbUpdates.major = updates.major;
+    if (updates.semester !== undefined) dbUpdates.semester = updates.semester;
+    if (updates.cgpa !== undefined) dbUpdates.cgpa = updates.cgpa;
+    if (updates.hostelRoom !== undefined) dbUpdates.hostel_room = updates.hostelRoom;
+
+    const { error } = await supabase
+      .from('profiles')
+      .update(dbUpdates)
+      .eq('id', user.id);
+
+    if (error) {
+      console.error('Error updating profile:', error);
+    }
   },
 
   setIsChatOpen: (open) => set({ isChatOpen: open }),
