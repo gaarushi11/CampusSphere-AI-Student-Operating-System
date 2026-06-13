@@ -37,47 +37,56 @@ ${context.classes?.map((c: any) => `- ${c.title} (${c.type}) on ${c.time}`).join
         region: process.env.AWS_REGION || 'us-east-1',
       });
 
-      // 1. Embed the user's message
-      const embedCommand = new InvokeModelCommand({
-        modelId: 'amazon.titan-embed-text-v2:0', // Updated to v2 to avoid legacy error
-        contentType: 'application/json',
-        accept: 'application/json',
-        body: JSON.stringify({ inputText: message }),
-      });
+      // 1. Try to Embed the user's message using AWS
+      let embedding: number[] | null = null;
+      try {
+        const embedCommand = new InvokeModelCommand({
+          modelId: 'amazon.titan-embed-text-v2:0',
+          contentType: 'application/json',
+          accept: 'application/json',
+          body: JSON.stringify({ inputText: message }),
+        });
 
-      const embedResponse = await bedrock.send(embedCommand);
-      const embedBody = JSON.parse(new TextDecoder().decode(embedResponse.body));
-      const embedding = embedBody.embedding;
-
-      // 2. Search Supabase for similar chunks
-      const { data: chunks, error: searchError } = await supabase.rpc('match_document_chunks', {
-        query_embedding: embedding,
-        match_threshold: 0.7,
-        match_count: 5,
-      });
-
-      if (searchError) {
-        console.error('Search error:', searchError);
+        const embedResponse = await bedrock.send(embedCommand);
+        const embedBody = JSON.parse(new TextDecoder().decode(embedResponse.body));
+        embedding = embedBody.embedding;
+      } catch (awsError: any) {
+        console.warn('AWS Embeddings failed. IAM/Region issue.', awsError.message);
       }
 
-      // 3. Construct context
+      // 2. Search Supabase for similar chunks OR fallback to all chunks
       let contextText = '';
       const sources: any[] = [];
-      if (chunks && chunks.length > 0) {
-        contextText = chunks.map((c: any) => c.content).join('\n\n---\n\n');
-        
-        const uniqueDocs = Array.from(new Set(chunks.map((c: any) => c.document_id)));
-        for (const docId of uniqueDocs) {
-          const { data: docData } = await supabase.from('documents').select('name').eq('id', docId).single();
-          if (docData) {
-            sources.push({ title: docData.name, type: 'PDF' });
+      
+      if (embedding) {
+        const { data: chunks, error: searchError } = await supabase.rpc('match_document_chunks', {
+          query_embedding: embedding,
+          match_threshold: 0.5,
+          match_count: 5,
+        });
+
+        if (chunks && chunks.length > 0) {
+          contextText = chunks.map((c: any) => c.content).join('\n\n---\n\n');
+          const uniqueDocs = Array.from(new Set(chunks.map((c: any) => c.document_id)));
+          for (const docId of uniqueDocs) {
+            const { data: docData } = await supabase.from('documents').select('name').eq('id', docId).single();
+            if (docData) sources.push({ title: docData.name, type: 'PDF' });
           }
+        } else {
+          contextText = "No relevant documents found in the Knowledge Vault.";
         }
       } else {
-        contextText = "No relevant documents found in the Knowledge Vault.";
+        // Fallback RAG: If AWS embeddings failed, just grab recent document chunks directly!
+        const { data: fallbackChunks } = await supabase.from('document_chunks').select('content, document_id').limit(5);
+        if (fallbackChunks && fallbackChunks.length > 0) {
+          contextText = fallbackChunks.map((c: any) => c.content).join('\n\n---\n\n');
+          sources.push({ title: "Knowledge Vault (Fallback)", type: "PDF" });
+        } else {
+          contextText = "No relevant documents found in the Knowledge Vault.";
+        }
       }
 
-      // 4. Generate Answer using Claude 3 on Bedrock
+      // 3. Generate Answer
       const systemPrompt = `You are CampusFlow AI, a highly intelligent and friendly student assistant. 
 Your goal is to help the student with their academic questions, schedule, and general knowledge.
 
@@ -94,46 +103,55 @@ If the context is NOT relevant to the question, feel free to answer using your o
 ${contextText}
 </document_context>`;
 
-      const chatCommand = new InvokeModelCommand({
-        modelId: 'anthropic.claude-3-haiku-20240307-v1:0', 
-        contentType: 'application/json',
-        accept: 'application/json',
-        body: JSON.stringify({
-          anthropic_version: 'bedrock-2023-05-31',
-          max_tokens: 1000,
-          system: systemPrompt,
-          messages: [{ role: 'user', content: message }],
-        }),
-      });
-
-      const chatResponse = await bedrock.send(chatCommand);
-      const chatBody = JSON.parse(new TextDecoder().decode(chatResponse.body));
-      const answer = chatBody.content[0].text;
-
-      return NextResponse.json({
-        role: 'assistant',
-        content: answer,
-        sources: sources,
-        model: 'CampusFlow-RAG (Bedrock Claude 3)',
-        timestamp: new Date().toISOString(),
-      });
-
-    } catch (awsError: any) {
-      console.warn('AWS Bedrock failed (likely due to payment/access). Falling back to local mock.', awsError.message);
+      // Determine whether to use OpenRouter or AWS Bedrock for LLM
+      const openRouterKey = process.env.OPEN_ROUTER_API_KEY;
       
-      // FALLBACK TO MOCK IF AWS FAILS
-      const { content, sources } = getMockAIResponse(message);
-      return NextResponse.json({
-        role: 'assistant',
-        content: `*(AWS Bedrock Offline: Using intelligent fallback)*\n\n${content}`,
-        sources: sources ?? [],
-        model: 'CampusFlow-RAG (Fallback Mode)',
-        timestamp: new Date().toISOString(),
-      });
-    }
+      if (openRouterKey) {
+        // Use OpenRouter (Claude 3 Haiku)
+        const orResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${openRouterKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            "model": "anthropic/claude-3-haiku",
+            "messages": [
+              { "role": "system", "content": systemPrompt },
+              { "role": "user", "content": message }
+            ]
+          })
+        });
 
+        const orData = await orResponse.json();
+        const answer = orData.choices[0].message.content;
+
+        return NextResponse.json({
+          role: 'assistant',
+          content: answer,
+          sources: sources,
+          model: 'CampusFlow AI (OpenRouter Claude 3)',
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        // Fallback to local mock if OpenRouter is missing
+        console.warn('No OpenRouter key found. Falling back to local mock.');
+        const { content, sources: mockSources } = getMockAIResponse(message);
+        return NextResponse.json({
+          role: 'assistant',
+          content: `*(System Offline: OpenRouter key missing)*\n\n${content}`,
+          sources: mockSources ?? [],
+          model: 'CampusFlow AI (Fallback)',
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+    } catch (error: any) {
+      console.error('Chat API error:', error);
+      return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    }
   } catch (error: any) {
-    console.error('Chat API error:', error);
+    console.error('Outer Chat API error:', error);
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
 }
