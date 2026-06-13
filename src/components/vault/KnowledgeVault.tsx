@@ -98,9 +98,17 @@ export function KnowledgeVault() {
             filePath,
             userId: user.id,
           })
-        }).then(res => {
-          if (!res.ok) console.error('Indexing failed', res);
-          // In a real app, we would refresh the store or use realtime subscriptions
+        }).then(async res => {
+          if (!res.ok) {
+            const data = await res.json();
+            console.error('Indexing failed', data);
+            alert(`Indexing failed: ${data.error || 'Unknown error'}`);
+          } else {
+            // Update frontend state so it stops rotating
+            useAppStore.getState().markDocumentIndexed(documentId);
+          }
+        }).catch(err => {
+          console.error('Network error during indexing:', err);
         });
       }
 

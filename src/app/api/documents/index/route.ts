@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
 
       try {
         const embedCommand = new InvokeModelCommand({
-          modelId: 'amazon.titan-embed-text-v1', // 1536 dimensions
+          modelId: 'amazon.titan-embed-text-v2:0',
           contentType: 'application/json',
           accept: 'application/json',
           body: JSON.stringify({ inputText: chunk }),

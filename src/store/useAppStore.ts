@@ -21,6 +21,7 @@ interface AppState {
   addClass: (cls: Partial<ClassSession>) => Promise<void>;
   addMessage: (msg: ChatMessage) => void;
   addDocument: (doc: Partial<Document>) => Promise<string | undefined>;
+  markDocumentIndexed: (id: string) => void;
   updateProfile: (updates: Partial<Profile>) => Promise<void>;
   setIsChatOpen: (open: boolean) => void;
   setActiveNavItem: (item: string) => void;
@@ -335,6 +336,13 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     return data.id;
   },
+
+  markDocumentIndexed: (id) =>
+    set((state) => ({
+      documents: state.documents.map((d) =>
+        d.id === id ? { ...d, isIndexed: true } : d
+      ),
+    })),
 
   updateProfile: async (updates) => {
     const supabase = createClient();
