@@ -60,15 +60,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { data: classesData } = await supabase
       .from('classes')
       .select('*')
+      .eq('user_id', user.id)
       .order('start_hour', { ascending: true });
 
     // Fetch tasks
     const { data: tasksData } = await supabase
       .from('tasks')
       .select('*')
+      .eq('user_id', user.id)
       .order('due_date', { ascending: true });
 
-    // Fetch notices
+    // Fetch notices (usually global, but we can leave as is or filter if notices are personal)
+    // Assuming notices are campus-wide, we won't filter by user.id
     const { data: noticesData } = await supabase
       .from('notices')
       .select('*')
@@ -78,6 +81,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { data: documentsData } = await supabase
       .from('documents')
       .select('*')
+      .eq('user_id', user.id)
       .order('uploaded_at', { ascending: false });
 
     // Map database snake_case to frontend camelCase

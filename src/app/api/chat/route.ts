@@ -41,7 +41,7 @@ ${context.classes?.map((c: any) => `- ${c.title} (${c.type}) on ${c.time}`).join
       let embedding: number[] | null = null;
       try {
         const embedCommand = new InvokeModelCommand({
-          modelId: 'amazon.titan-embed-text-v2:0',
+          modelId: 'amazon.titan-embed-text-v1', // 1536 dimensions
           contentType: 'application/json',
           accept: 'application/json',
           body: JSON.stringify({ inputText: message }),
@@ -58,7 +58,9 @@ ${context.classes?.map((c: any) => `- ${c.title} (${c.type}) on ${c.time}`).join
       let contextText = '';
       const sources: any[] = [];
       
-      if (embedding) {
+      const userId = context?.profile?.id;
+
+      if (embedding && userId) {
         const { data: chunks, error: searchError } = await supabase.rpc('match_document_chunks', {
           query_embedding: embedding,
           match_threshold: 0.5,
@@ -66,24 +68,54 @@ ${context.classes?.map((c: any) => `- ${c.title} (${c.type}) on ${c.time}`).join
         });
 
         if (chunks && chunks.length > 0) {
-          contextText = chunks.map((c: any) => c.content).join('\n\n---\n\n');
+          // Filter chunks to only include those belonging to the current user
+          const validChunks = [];
           const uniqueDocs = Array.from(new Set(chunks.map((c: any) => c.document_id)));
+          
           for (const docId of uniqueDocs) {
-            const { data: docData } = await supabase.from('documents').select('name').eq('id', docId).single();
-            if (docData) sources.push({ title: docData.name, type: 'PDF' });
+            const { data: docData } = await supabase.from('documents')
+              .select('name')
+              .eq('id', docId)
+              .eq('user_id', userId)
+              .single();
+            
+            if (docData) {
+              sources.push({ title: docData.name, type: 'PDF' });
+              // Include chunks from this document
+              validChunks.push(...chunks.filter((c: any) => c.document_id === docId));
+            }
+          }
+
+          if (validChunks.length > 0) {
+            contextText = validChunks.map((c: any) => c.content).join('\n\n---\n\n');
+          } else {
+            contextText = "No relevant documents found in the Knowledge Vault.";
           }
         } else {
           contextText = "No relevant documents found in the Knowledge Vault.";
         }
-      } else {
+      } else if (userId) {
         // Fallback RAG: If AWS embeddings failed, just grab recent document chunks directly!
-        const { data: fallbackChunks } = await supabase.from('document_chunks').select('content, document_id').limit(5);
-        if (fallbackChunks && fallbackChunks.length > 0) {
-          contextText = fallbackChunks.map((c: any) => c.content).join('\n\n---\n\n');
-          sources.push({ title: "Knowledge Vault (Fallback)", type: "PDF" });
+        const { data: userDocs } = await supabase.from('documents').select('id').eq('user_id', userId);
+        const docIds = userDocs?.map(d => d.id) || [];
+        
+        if (docIds.length > 0) {
+          const { data: fallbackChunks } = await supabase.from('document_chunks')
+            .select('content, document_id')
+            .in('document_id', docIds)
+            .limit(5);
+          
+          if (fallbackChunks && fallbackChunks.length > 0) {
+            contextText = fallbackChunks.map((c: any) => c.content).join('\n\n---\n\n');
+            sources.push({ title: "Knowledge Vault (Fallback)", type: "PDF" });
+          } else {
+            contextText = "No relevant documents found in the Knowledge Vault.";
+          }
         } else {
-          contextText = "No relevant documents found in the Knowledge Vault.";
+           contextText = "No relevant documents found in the Knowledge Vault.";
         }
+      } else {
+        contextText = "No relevant documents found in the Knowledge Vault.";
       }
 
       // 3. Generate Answer
