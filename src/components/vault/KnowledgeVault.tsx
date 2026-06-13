@@ -73,6 +73,7 @@ export function KnowledgeVault() {
 
         if (uploadError) {
           console.error('Upload failed:', uploadError);
+          alert(`Upload failed: ${uploadError.message}. Did you create the 'vault_files' storage bucket in Supabase?`);
           continue;
         }
 
