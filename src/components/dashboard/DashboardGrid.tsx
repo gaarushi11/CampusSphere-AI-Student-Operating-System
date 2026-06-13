@@ -15,10 +15,48 @@ export function DashboardGrid() {
   const setIsChatOpen = useAppStore((s) => s.setIsChatOpen);
   const fetchData = useAppStore((s) => s.fetchData);
   const isLoading = useAppStore((s) => s.isLoading);
+  
+  const tasks = useAppStore((s) => s.tasks);
+  const classes = useAppStore((s) => s.classes);
+  const notices = useAppStore((s) => s.notices);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Generate Dynamic Digest
+  let urgentItemsCount = 0;
+  const digestParts: string[] = [];
+
+  if (!isLoading) {
+    // 1. Urgent Tasks
+    const urgentTasks = tasks.filter(t => !t.completed && t.priority === 'High');
+    urgentItemsCount += urgentTasks.length;
+    if (urgentTasks.length > 0) {
+      const titles = urgentTasks.slice(0, 2).map(t => t.title).join(' & ');
+      digestParts.push(`${titles} task${urgentTasks.length > 1 ? 's' : ''} due soon`);
+    }
+
+    // 2. Attendance Warning
+    // Calculate unique classes first to avoid duplicate warnings
+    const uniqueSubjects = Array.from(new Set(classes.map(c => c.shortCode)));
+    const lowAttendanceClasses = uniqueSubjects.filter(shortCode => {
+      const cls = classes.find(c => c.shortCode === shortCode);
+      return cls && cls.attendancePercentage < 75;
+    });
+
+    if (lowAttendanceClasses.length > 0) {
+      urgentItemsCount += lowAttendanceClasses.length;
+      digestParts.push(`critical attendance below 75% in ${lowAttendanceClasses.join(', ')}`);
+    }
+
+    // 3. Urgent Notices
+    const urgentNotices = notices.filter(n => !n.isRead && (n.category === 'Urgent' || n.category === 'Placement'));
+    urgentItemsCount += urgentNotices.length;
+    if (urgentNotices.length > 0) {
+      digestParts.push(`${urgentNotices.length} unread important notice${urgentNotices.length > 1 ? 's' : ''}`);
+    }
+  }
 
   if (isLoading) {
     return (
@@ -52,7 +90,15 @@ export function DashboardGrid() {
                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               </div>
               <p className="text-xs text-slate-300 leading-relaxed max-w-2xl">
-                You have <span className="text-rose-400 font-semibold">3 urgent items</span> today: Cloud Computing assignment due in 2 hours, Amazon placement registration closes tonight, and campus internet maintenance from 11 PM. Your OS attendance is critically low at 68% — attend today&apos;s class.
+                {urgentItemsCount > 0 ? (
+                  <>
+                    You have <span className="text-rose-400 font-semibold">{urgentItemsCount} urgent item{urgentItemsCount !== 1 ? 's' : ''}</span> requiring attention today: {digestParts.join(', ')}.
+                  </>
+                ) : (
+                  <>
+                    Your dashboard is clear! You have <span className="text-emerald-400 font-semibold">0 urgent items</span> and no critical attendance warnings today. Have a great day!
+                  </>
+                )}
               </p>
             </div>
           </div>
