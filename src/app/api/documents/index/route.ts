@@ -57,28 +57,32 @@ export async function POST(req: NextRequest) {
     for (const chunk of chunks) {
       if (!chunk) continue;
 
-      const embedCommand = new InvokeModelCommand({
-        modelId: 'amazon.titan-embed-text-v1', // 1536 dimensions
-        contentType: 'application/json',
-        accept: 'application/json',
-        body: JSON.stringify({ inputText: chunk }),
-      });
-
-      const response = await bedrock.send(embedCommand);
-      const responseBody = JSON.parse(new TextDecoder().decode(response.body));
-      const embedding = responseBody.embedding;
-
-      // Insert chunk into document_chunks table
-      const { error: insertError } = await supabase
-        .from('document_chunks')
-        .insert({
-          document_id: documentId,
-          content: chunk,
-          embedding: embedding, // pgvector handles arrays automatically
+      try {
+        const embedCommand = new InvokeModelCommand({
+          modelId: 'amazon.titan-embed-text-v1', // 1536 dimensions
+          contentType: 'application/json',
+          accept: 'application/json',
+          body: JSON.stringify({ inputText: chunk }),
         });
 
-      if (insertError) {
-        console.error('Error inserting chunk:', insertError);
+        const response = await bedrock.send(embedCommand);
+        const responseBody = JSON.parse(new TextDecoder().decode(response.body));
+        const embedding = responseBody.embedding;
+
+        // Insert chunk into document_chunks table
+        const { error: insertError } = await supabase
+          .from('document_chunks')
+          .insert({
+            document_id: documentId,
+            content: chunk,
+            embedding: embedding, // pgvector handles arrays automatically
+          });
+
+        if (insertError) {
+          console.error('Error inserting chunk:', insertError);
+        }
+      } catch (awsError) {
+        console.warn('AWS Bedrock Embedding failed for chunk. Skipping...', awsError);
       }
     }
 

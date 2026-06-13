@@ -125,26 +125,30 @@ export function FloatingAIBrain() {
           context: {
             profile,
             classes,
-            tasks: tasks.filter(t => !t.completed) // Only send incomplete tasks
+            tasks: tasks.filter(t => !t.completed)
           }
         }),
       });
       const data = await res.json();
 
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Internal API Error');
+      }
+
       const aiMsg: ChatMessage = {
         id: `msg-${Date.now()}-ai`,
         role: 'assistant',
-        content: data.content || 'I apologize, I could not process that request.',
+        content: data.content,
         timestamp: new Date(),
       };
       setIsTyping(false);
       addMessage(aiMsg);
-    } catch {
+    } catch (error: any) {
       setIsTyping(false);
       addMessage({
         id: `msg-${Date.now()}-err`,
         role: 'assistant',
-        content: 'Sorry, I encountered an error. Please try again.',
+        content: `Error: ${error.message || 'I encountered an error. Please try again.'}`,
         timestamp: new Date(),
       });
     }
