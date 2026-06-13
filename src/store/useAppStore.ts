@@ -21,6 +21,7 @@ interface AppState {
   addClass: (cls: Partial<ClassSession>) => Promise<void>;
   addMessage: (msg: ChatMessage) => void;
   addDocument: (doc: Partial<Document>) => Promise<string | undefined>;
+  removeDocument: (id: string) => Promise<void>;
   markDocumentIndexed: (id: string) => void;
   updateProfile: (updates: Partial<Profile>) => Promise<void>;
   setIsChatOpen: (open: boolean) => void;
@@ -339,6 +340,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
 
     return data.id;
+  },
+
+  removeDocument: async (id) => {
+    const supabase = createClient();
+    
+    // Optimistic UI update
+    set((state) => ({
+      documents: state.documents.filter((d) => d.id !== id),
+    }));
+
+    // Actually delete from DB
+    const { error } = await supabase.from('documents').delete().eq('id', id);
+    if (error) {
+      console.error('Failed to delete document:', error);
+      // In a real app we might want to revert the optimistic update here
+    }
   },
 
   markDocumentIndexed: (id) =>

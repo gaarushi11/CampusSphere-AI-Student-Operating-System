@@ -25,6 +25,7 @@ import { createClient } from '@/utils/supabase/client';
 export function KnowledgeVault() {
   const documents = useAppStore((s) => s.documents);
   const addDocument = useAppStore((s) => s.addDocument);
+  const removeDocument = useAppStore((s) => s.removeDocument);
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -263,6 +264,19 @@ export function KnowledgeVault() {
                           )}
                         </div>
                       </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 flex-shrink-0"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm('Are you sure you want to delete this document?')) {
+                            removeDocument(doc.id);
+                          }
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
