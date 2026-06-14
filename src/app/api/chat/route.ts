@@ -1,8 +1,12 @@
+// src/app/api/chat/route.ts
+// CRITICAL FIX: Previous version had literal \` and \${ syntax errors that
+// broke the entire endpoint. Rewritten with correct template literals.
+
 import { NextRequest, NextResponse } from 'next/server';
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
 import { createAdminClient } from '@/utils/supabase/admin';
 import { getMockAIResponse } from '@/lib/aiResponses';
-import type { Profile, Task, ClassSession } from '@/types';
+import type { Profile, Task, ClassSession, ChatSource } from '@/types';
 
 interface RequestContext {
   profile?: Profile;
@@ -18,16 +22,9 @@ interface ChunkResult {
   similarity: number;
 }
 
-interface DocumentSource {
-  title: string;
-  type: string;
-  relevance: number;
-}
+const CHAT_MODEL = process.env.CHAT_LLM_MODEL || 'anthropic/claude-3-haiku-20240307';
 
-async function embedQuery(
-  bedrock: BedrockRuntimeClient,
-  text: string
-): Promise<number[] | null> {
+async function embedQuery(bedrock: BedrockRuntimeClient, text: string): Promise<number[] | null> {
   try {
     const command = new InvokeModelCommand({
       modelId: 'amazon.titan-embed-text-v1',
@@ -46,21 +43,23 @@ async function embedQuery(
 }
 
 async function keywordSearch(
-  supabase: ReturnType<typeof import('@/utils/supabase/admin').createAdminClient>,
+  supabase: ReturnType<typeof createAdminClient>,
   userId: string,
   query: string,
   limit = 5
-): Promise<{ chunks: ChunkResult[]; sources: DocumentSource[] }> {
-  const stopWords = new Set(['the', 'a', 'an', 'is', 'it', 'in', 'on', 'at', 'to', 'for', 'of', 'and', 'or', 'what', 'my', 'me', 'i', 'how', 'about', 'tell', 'can', 'you']);
+): Promise<{ chunks: ChunkResult[]; sources: ChatSource[] }> {
+  const stopWords = new Set([
+    'the', 'a', 'an', 'is', 'it', 'in', 'on', 'at', 'to', 'for', 'of', 'and',
+    'or', 'what', 'my', 'me', 'i', 'how', 'about', 'tell', 'can', 'you', 'are',
+    'do', 'does', 'when', 'where', 'this', 'that', 'with',
+  ]);
   const keywords = query
     .toLowerCase()
     .replace(/[^a-z0-9 ]/g, '')
     .split(/\s+/)
-    .filter(w => w.length > 2 && !stopWords.has(w));
+    .filter((w) => w.length > 2 && !stopWords.has(w));
 
-  if (keywords.length === 0) {
-    return { chunks: [], sources: [] };
-  }
+  if (keywords.length === 0) return { chunks: [], sources: [] };
 
   const { data: userDocs } = await supabase
     .from('documents')
@@ -68,13 +67,10 @@ async function keywordSearch(
     .eq('user_id', userId)
     .eq('is_indexed', true);
 
-  if (!userDocs || userDocs.length === 0) {
-    return { chunks: [], sources: [] };
-  }
+  if (!userDocs || userDocs.length === 0) return { chunks: [], sources: [] };
 
-  const docIds = userDocs.map(d => d.id);
-  const docMap = Object.fromEntries(userDocs.map(d => [d.id, d]));
-
+  const docIds = userDocs.map((d) => d.id);
+  const docMap = Object.fromEntries(userDocs.map((d) => [d.id, d]));
   const searchKeyword = keywords.slice(0, 3).join(' ');
 
   const { data: chunks } = await supabase
@@ -84,28 +80,21 @@ async function keywordSearch(
     .ilike('content', `%${searchKeyword}%`)
     .limit(limit);
 
-  if (!chunks || chunks.length === 0) {
+  let resultChunks = chunks || [];
+
+  if (resultChunks.length === 0) {
     const { data: fallback } = await supabase
       .from('document_chunks')
       .select('id, document_id, content, chunk_index')
       .in('document_id', docIds)
       .order('chunk_index', { ascending: true })
       .limit(limit);
-
-    const fbChunks = (fallback || []).map(c => ({ ...c, similarity: 0 }));
-    const fbSources = [...new Set(fbChunks.map(c => c.document_id))]
-      .map(docId => ({
-        title: docMap[docId]?.name || 'Unknown',
-        type: docMap[docId]?.type || 'PDF',
-        relevance: 0,
-      }));
-
-    return { chunks: fbChunks, sources: fbSources };
+    resultChunks = fallback || [];
   }
 
-  const typedChunks: ChunkResult[] = chunks.map(c => ({ ...c, similarity: 0 }));
-  const uniqueDocIds = [...new Set(typedChunks.map(c => c.document_id))];
-  const sources: DocumentSource[] = uniqueDocIds.map(docId => ({
+  const typedChunks: ChunkResult[] = resultChunks.map((c) => ({ ...c, similarity: 0 }));
+  const uniqueDocIds = [...new Set(typedChunks.map((c) => c.document_id))];
+  const sources: ChatSource[] = uniqueDocIds.map((docId) => ({
     title: docMap[docId]?.name || 'Unknown',
     type: docMap[docId]?.type || 'PDF',
     relevance: 0,
@@ -123,29 +112,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
     }
 
+    // Build user context string
     let profileContextStr = 'No user profile available.';
     if (context) {
-      const pendingTasks = (context.tasks || []).filter(t => !t.completed);
-      profileContextStr = `
-Student Name: ${context.profile?.name || 'Unknown'}
-Semester: ${context.profile?.semester || 'Unknown'}
-Major: ${context.profile?.major || 'Unknown'}
-CGPA: ${context.profile?.cgpa || 'Unknown'}
-Hostel Room: ${context.profile?.hostelRoom || 'Unknown'}
-
-Their ${pendingTasks.length} pending tasks:
-${pendingTasks.map(t => `- [${t.priority}] ${t.title} (Due: ${t.dueDate}, Subject: ${t.subject})`).join('\n') || 'None'}
-
-Their today's classes:
-${(context.classes || []).map(c => `- ${c.shortCode}: ${c.title} at ${c.time} in ${c.room} (Attendance: ${c.attendancePercentage}%)`).join('\n') || 'None'}
-`.trim();
+      const pendingTasks = (context.tasks || []).filter((t) => !t.completed);
+      profileContextStr = [
+        `Student Name: ${context.profile?.name || 'Unknown'}`,
+        `Semester: ${context.profile?.semester ?? 'Unknown'}`,
+        `Major: ${context.profile?.major || 'Unknown'}`,
+        `CGPA: ${context.profile?.cgpa ?? 'Unknown'}`,
+        `Hostel Room: ${context.profile?.hostelRoom || 'Unknown'}`,
+        '',
+        `Their ${pendingTasks.length} pending tasks:`,
+        pendingTasks.map((t) => `- [${t.priority}] ${t.title} (Due: ${t.dueDate}, Subject: ${t.subject})`).join('\n') || 'None',
+        '',
+        "Their classes this week:",
+        (context.classes || []).map((c) => `- ${c.dayOfWeek} ${c.time}: ${c.shortCode} ${c.title} in ${c.room} with ${c.instructor} (Attendance: ${c.attendancePercentage}%)`).join('\n') || 'None',
+      ].join('\n');
     }
 
     const supabase = createAdminClient();
     const userId = context?.profile?.id;
 
+    // RAG retrieval
     let contextText = 'No documents found in the Knowledge Vault.';
-    let sources: DocumentSource[] = [];
+    let sources: ChatSource[] = [];
 
     if (userId) {
       const { count: docCount } = await supabase
@@ -166,127 +157,143 @@ ${(context.classes || []).map(c => `- ${c.shortCode}: ${c.title} at ${c.time} in
         const queryEmbedding = await embedQuery(bedrock, message);
 
         if (queryEmbedding) {
-          const { data: chunks, error: searchError } = await supabase.rpc(
-            'match_document_chunks',
-            {
-              query_embedding: queryEmbedding,
-              match_threshold: 0.4,
-              match_count: 6,
-              p_user_id: userId,
-            }
-          );
+          const { data: chunks, error: searchError } = await supabase.rpc('match_document_chunks', {
+            query_embedding: queryEmbedding,
+            match_threshold: 0.35,
+            match_count: 6,
+            p_user_id: userId,
+          });
 
           if (searchError) {
             console.error('[Chat/RAG] match_document_chunks RPC error:', searchError.message);
+            const fallback = await keywordSearch(supabase, userId, message);
+            if (fallback.chunks.length > 0) {
+              contextText = fallback.chunks.map((c, i) => `[Excerpt ${i + 1}]\n${c.content}`).join('\n\n---\n\n');
+              sources = fallback.sources;
+            }
           } else if (chunks && (chunks as ChunkResult[]).length > 0) {
             const typedChunks = chunks as ChunkResult[];
             contextText = typedChunks
-              .map((c, i) => `[Chunk ${i + 1} | similarity: ${c.similarity.toFixed(3)}]\n${c.content}`)
+              .map((c, i) => `[Excerpt ${i + 1} | relevance: ${(c.similarity * 100).toFixed(0)}%]\n${c.content}`)
               .join('\n\n---\n\n');
 
-            const uniqueDocIds = [...new Set(typedChunks.map(c => c.document_id))];
+            const uniqueDocIds = [...new Set(typedChunks.map((c) => c.document_id))];
             const { data: docRows } = await supabase
               .from('documents')
               .select('id, name, type')
               .in('id', uniqueDocIds);
 
             if (docRows) {
-              const docMap = Object.fromEntries(docRows.map(d => [d.id, d]));
-              sources = uniqueDocIds.map(docId => ({
+              const docMap = Object.fromEntries(docRows.map((d) => [d.id, d]));
+              sources = uniqueDocIds.map((docId) => ({
                 title: docMap[docId]?.name || 'Unknown document',
                 type: docMap[docId]?.type || 'PDF',
-                relevance: typedChunks.find(c => c.document_id === docId)?.similarity || 0,
+                relevance: typedChunks.find((c) => c.document_id === docId)?.similarity || 0,
               }));
             }
           } else {
             const fallback = await keywordSearch(supabase, userId, message);
             if (fallback.chunks.length > 0) {
-              contextText = fallback.chunks
-                .map((c, i) => `[Chunk ${i + 1} | keyword match]\n${c.content}`)
-                .join('\n\n---\n\n');
+              contextText = fallback.chunks.map((c, i) => `[Excerpt ${i + 1} | keyword match]\n${c.content}`).join('\n\n---\n\n');
               sources = fallback.sources;
             } else {
-              contextText = 'No relevant content found in your Knowledge Vault for this query. I will answer from general knowledge.';
+              contextText = 'No content in the Knowledge Vault closely matches this question. Answer from general knowledge.';
             }
           }
         } else {
           const fallback = await keywordSearch(supabase, userId, message);
           if (fallback.chunks.length > 0) {
-            contextText = fallback.chunks
-              .map((c, i) => `[Chunk ${i + 1} | keyword match]\n${c.content}`)
-              .join('\n\n---\n\n');
+            contextText = fallback.chunks.map((c, i) => `[Excerpt ${i + 1} | keyword match]\n${c.content}`).join('\n\n---\n\n');
             sources = fallback.sources;
           }
         }
       } else {
-        contextText = 'The student has not uploaded any documents to their Knowledge Vault yet.';
+        contextText = 'The student has not uploaded any indexed documents to their Knowledge Vault yet.';
       }
     }
 
-    const systemPrompt = `You are CampusFlow AI, a highly intelligent, friendly, and accurate AI assistant for college students.
+    // System prompt
+    const systemPrompt = `You are CampusFlow AI, an intelligent, friendly, and accurate assistant for college students.
 
-Your core responsibilities:
-1. Answer questions using the student's personal context (profile, schedule, tasks)
-2. Answer document-related questions using the retrieved Knowledge Vault chunks
-3. Give general academic and campus life guidance when no specific context is available
+Your responsibilities, in priority order:
+1. Answer using the student's personal context below (profile, schedule, tasks) when the question is about them.
+2. Answer using the Knowledge Vault excerpts below when the question relates to uploaded documents (syllabus, notes, slides).
+3. Otherwise, answer from general academic/campus knowledge.
 
-IMPORTANT RULES:
-- Be concise and helpful. Use markdown formatting: **bold** for emphasis, bullet points with •
-- If the document context is provided and relevant, cite it naturally ("Based on your uploaded OS notes...")
-- If the document context is NOT relevant to the question, answer from general knowledge and say so
-- Never make up specific exam dates, grades, or facts that aren't in the context
-- If asked about attendance, use the exact numbers from the user profile
+FORMATTING:
+- Be concise. Use **bold** for key terms and • for bullet points.
+- If you use Knowledge Vault content, mention the source naturally (e.g., "Based on your uploaded OS notes...").
+- If the Knowledge Vault excerpts are not relevant to the question, say so and answer from general knowledge instead.
+- Never invent specific dates, grades, or numbers that aren't in the context provided.
 
-<user_context>
+<student_context>
 ${profileContextStr}
-</user_context>
+</student_context>
 
-<knowledge_vault_context>
+<knowledge_vault_excerpts>
 ${contextText}
-</knowledge_vault_context>`;
+</knowledge_vault_excerpts>`;
 
+    // Generate answer
     const openRouterKey = process.env.OPEN_ROUTER_API_KEY;
 
     if (!openRouterKey) {
-      console.warn('[Chat] No OPEN_ROUTER_API_KEY. Falling back to local mock responses.');
       const { content, sources: mockSources } = getMockAIResponse(message);
       return NextResponse.json({
         role: 'assistant',
-        content: \`*(System Offline: OpenRouter key missing)*\n\n\${content}\`,
+        content: `*(Demo mode: OPEN_ROUTER_API_KEY not configured)*\n\n${content}`,
         sources: mockSources ?? [],
-        model: 'CampusFlow AI (Fallback)',
+        model: 'CampusFlow AI (Demo Mode)',
         timestamp: new Date().toISOString(),
       });
     }
 
-    const orResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
+    const orResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
       headers: {
-        "Authorization": \`Bearer \${openRouterKey}\`,
-        "Content-Type": "application/json"
+        Authorization: `Bearer ${openRouterKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://campusflow.app',
+        'X-Title': 'CampusFlow AI Student OS',
       },
       body: JSON.stringify({
-        "model": "anthropic/claude-3-haiku-20240307",
-        "messages": [
-          { "role": "system", "content": systemPrompt },
-          { "role": "user", "content": message }
-        ]
-      })
+        model: CHAT_MODEL,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: message },
+        ],
+        max_tokens: 1200,
+        temperature: 0.3,
+      }),
     });
 
     const orData = await orResponse.json();
-    const answer = orData.choices[0].message.content;
+
+    if (!orResponse.ok || !orData?.choices?.[0]?.message?.content) {
+      const errorDetail = orData?.error?.message || JSON.stringify(orData).slice(0, 300);
+      console.error('[Chat] OpenRouter error:', orResponse.status, errorDetail);
+      return NextResponse.json(
+        {
+          error: `LLM provider error (${orResponse.status}): ${errorDetail}`,
+          hint: 'Check OPEN_ROUTER_API_KEY is valid and has credit at https://openrouter.ai/credits',
+        },
+        { status: 502 }
+      );
+    }
+
+    const answer: string = orData.choices[0].message.content;
 
     return NextResponse.json({
       role: 'assistant',
       content: answer,
-      sources: sources,
-      model: 'CampusFlow AI (OpenRouter Claude 3)',
+      sources,
+      model: `CampusFlow AI (${CHAT_MODEL} + Bedrock Titan RAG)`,
       timestamp: new Date().toISOString(),
+      ragUsed: sources.length > 0,
     });
-
-  } catch (error: any) {
-    console.error('Chat API error:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Internal server error';
+    console.error('[Chat] Fatal error:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -7,11 +7,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAppStore } from '@/store/useAppStore';
-import { isCurrentClass, isPastClass } from '@/lib/utils';
+import { isCurrentClass, isPastClass, getTodayName } from '@/lib/utils';
 
 export function TodayTimeline() {
   const [, setTick] = useState(0);
-  const classes = useAppStore((s) => s.classes);
+  const allClasses = useAppStore((s) => s.classes);
+  const todayName = getTodayName();
+  const classes = allClasses.filter((c) => c.dayOfWeek === todayName);
 
   useEffect(() => {
     const interval = setInterval(() => {

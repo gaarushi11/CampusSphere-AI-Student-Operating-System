@@ -1,7 +1,7 @@
 import { create } from 'zustand';
-import type { Task, Notice, ChatMessage, Document, ClassSession, Profile } from '@/types';
-import { mockDocuments } from '@/lib/mockData';
+import type { Task, Notice, ChatMessage, Document, ClassSession, Profile, ExtractedClass, DayOfWeek } from '@/types';
 import { createClient } from '@/utils/supabase/client';
+import { colorForClass } from '@/lib/utils';
 
 interface AppState {
   profile: Profile | null;
@@ -19,10 +19,12 @@ interface AppState {
   markNoticeRead: (id: string) => Promise<void>;
   addTask: (task: Partial<Task>) => Promise<void>;
   addClass: (cls: Partial<ClassSession>) => Promise<void>;
+  addBulkClasses: (classes: ExtractedClass[]) => Promise<void>;
   addMessage: (msg: ChatMessage) => void;
   addDocument: (doc: Partial<Document>) => Promise<string | undefined>;
   removeDocument: (id: string) => Promise<void>;
   markDocumentIndexed: (id: string) => void;
+  markDocumentError: (id: string, error: string) => void;
   updateProfile: (updates: Partial<Profile>) => Promise<void>;
   setIsChatOpen: (open: boolean) => void;
   setActiveNavItem: (item: string) => void;
@@ -43,63 +45,56 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ isLoading: true });
     const supabase = createClient();
     
-    // Fetch currently logged in user to get their ID
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       set({ isLoading: false });
       return;
     }
 
-    // Fetch profile
     const { data: profileData } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', user.id)
       .single();
 
-    // Fetch classes
     const { data: classesData } = await supabase
       .from('classes')
       .select('*')
       .eq('user_id', user.id)
       .order('start_hour', { ascending: true });
 
-    // Fetch tasks
     const { data: tasksData } = await supabase
       .from('tasks')
       .select('*')
       .eq('user_id', user.id)
       .order('due_date', { ascending: true });
 
-    // Fetch notices (usually global, but we can leave as is or filter if notices are personal)
-    // Assuming notices are campus-wide, we won't filter by user.id
     const { data: noticesData } = await supabase
       .from('notices')
       .select('*')
       .order('timestamp', { ascending: false });
 
-    // Fetch documents
     const { data: documentsData } = await supabase
       .from('documents')
       .select('*')
       .eq('user_id', user.id)
       .order('uploaded_at', { ascending: false });
 
-    // Map database snake_case to frontend camelCase
     const mappedClasses: ClassSession[] = (classesData || []).map((c) => ({
       id: c.id,
       title: c.title,
-      shortCode: c.short_code,
+      shortCode: c.short_code || c.title.slice(0, 4).toUpperCase(),
       type: c.type,
-      room: c.room,
-      instructor: c.instructor,
+      dayOfWeek: (c.day_of_week || 'Monday') as DayOfWeek,
+      room: c.room || 'TBD',
+      instructor: c.instructor || 'TBD',
       time: `${c.start_hour}:${c.start_minute.toString().padStart(2, '0')} - ${c.end_hour}:${c.end_minute.toString().padStart(2, '0')}`,
       startHour: c.start_hour,
       startMinute: c.start_minute,
       endHour: c.end_hour,
       endMinute: c.end_minute,
-      attendancePercentage: c.attendance_percentage,
-      color: 'bg-cyan-500', // Default color
+      attendancePercentage: c.attendance_percentage ?? 100,
+      color: c.color || colorForClass(c.short_code || c.title),
     }));
 
     const mappedTasks: Task[] = (tasksData || []).map((t) => {
@@ -110,7 +105,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         description: t.description || '',
         subject: t.course,
         priority: t.priority,
-        source: t.source as any,
+        source: t.source as Task['source'],
         completed: t.is_completed,
         dueDate: dueDate.toISOString(),
         dueTimeLabel: dueDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -121,7 +116,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       id: n.id,
       title: n.title,
       excerpt: n.description,
-      category: n.category as any,
+      category: n.category as Notice['category'],
       postedBy: n.sender,
       isRead: n.is_read,
       datePosted: new Date(n.timestamp).toISOString(),
@@ -130,12 +125,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     const mappedDocuments: Document[] = (documentsData || []).map((d) => ({
       id: d.id,
       name: d.name,
-      type: d.type as any,
+      type: d.type as Document['type'],
+      category: (d.category || 'Other') as Document['category'],
       size: d.size,
       uploadedAt: new Date(d.uploaded_at).toISOString(),
       subject: d.subject || '',
       isIndexed: d.is_indexed,
       pageCount: d.page_count || 1,
+      chunkCount: d.chunk_count || 0,
+      indexError: d.index_error || null,
+      filePath: d.file_path || undefined,
     }));
 
     set({
@@ -168,7 +167,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   toggleTask: async (id, currentStatus) => {
-    // Optimistic UI update
     set((state) => ({
       tasks: state.tasks.map((t) =>
         t.id === id ? { ...t, completed: !currentStatus } : t
@@ -183,7 +181,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   markNoticeRead: async (id) => {
-    // Optimistic UI update
     set((state) => ({
       notices: state.notices.map((n) =>
         n.id === id ? { ...n, isRead: true } : n
@@ -253,12 +250,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       type: cls.type || 'Lecture',
       room: cls.room,
       instructor: cls.instructor,
-      day_of_week: 'Monday', // Simplification for demo
+      day_of_week: cls.dayOfWeek || 'Monday',
       start_hour: cls.startHour,
       start_minute: cls.startMinute,
       end_hour: cls.endHour,
       end_minute: cls.endMinute,
-      attendance_percentage: 100, // Default for new class
+      attendance_percentage: 100,
+      color: colorForClass(cls.shortCode || cls.title || 'CS'),
     };
 
     const { data, error } = await supabase
@@ -277,6 +275,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       title: data.title,
       shortCode: data.short_code,
       type: data.type,
+      dayOfWeek: data.day_of_week as DayOfWeek,
       room: data.room,
       instructor: data.instructor,
       time: `${data.start_hour}:${data.start_minute.toString().padStart(2, '0')} - ${data.end_hour}:${data.end_minute.toString().padStart(2, '0')}`,
@@ -285,11 +284,64 @@ export const useAppStore = create<AppState>((set, get) => ({
       endHour: data.end_hour,
       endMinute: data.end_minute,
       attendancePercentage: data.attendance_percentage,
-      color: 'bg-cyan-500',
+      color: data.color || colorForClass(data.short_code),
     };
 
     set((state) => ({
       classes: [...state.classes, newClass].sort((a, b) => a.startHour - b.startHour),
+    }));
+  },
+
+  addBulkClasses: async (extractedClasses) => {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const dbRows = extractedClasses.map((cls) => ({
+      user_id: user.id,
+      title: cls.title,
+      short_code: cls.shortCode,
+      type: cls.type,
+      room: cls.room,
+      instructor: cls.instructor,
+      day_of_week: cls.dayOfWeek,
+      start_hour: cls.startHour,
+      start_minute: cls.startMinute,
+      end_hour: cls.endHour,
+      end_minute: cls.endMinute,
+      attendance_percentage: 100,
+      color: colorForClass(cls.shortCode),
+    }));
+
+    const { data, error } = await supabase
+      .from('classes')
+      .insert(dbRows)
+      .select();
+
+    if (error || !data) {
+      console.error('Error bulk inserting classes:', error);
+      return;
+    }
+
+    const newClasses: ClassSession[] = data.map((c) => ({
+      id: c.id,
+      title: c.title,
+      shortCode: c.short_code,
+      type: c.type,
+      dayOfWeek: c.day_of_week as DayOfWeek,
+      room: c.room,
+      instructor: c.instructor,
+      time: `${c.start_hour}:${c.start_minute.toString().padStart(2, '0')} - ${c.end_hour}:${c.end_minute.toString().padStart(2, '0')}`,
+      startHour: c.start_hour,
+      startMinute: c.start_minute,
+      endHour: c.end_hour,
+      endMinute: c.end_minute,
+      attendancePercentage: c.attendance_percentage,
+      color: c.color || colorForClass(c.short_code),
+    }));
+
+    set((state) => ({
+      classes: [...state.classes, ...newClasses].sort((a, b) => a.startHour - b.startHour),
     }));
   },
 
@@ -307,6 +359,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       user_id: user.id,
       name: doc.name,
       type: doc.type,
+      category: doc.category || 'Other',
       size: doc.size,
       subject: doc.subject,
       is_indexed: doc.isIndexed || false,
@@ -327,12 +380,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     const newDoc: Document = {
       id: data.id,
       name: data.name,
-      type: data.type as any,
+      type: data.type as Document['type'],
+      category: (data.category || 'Other') as Document['category'],
       size: data.size,
       uploadedAt: new Date(data.uploaded_at).toISOString(),
       subject: data.subject || '',
       isIndexed: data.is_indexed,
       pageCount: data.page_count,
+      chunkCount: 0,
+      indexError: null,
     };
 
     set((state) => ({
@@ -353,7 +409,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (!user) return;
 
-    // Actually delete from DB via API route to handle chunks and storage
+    // Delete via API route (handles chunks + storage via service role key)
     try {
       const res = await fetch('/api/documents/delete', {
         method: 'DELETE',
@@ -371,7 +427,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   markDocumentIndexed: (id) =>
     set((state) => ({
       documents: state.documents.map((d) =>
-        d.id === id ? { ...d, isIndexed: true } : d
+        d.id === id ? { ...d, isIndexed: true, indexError: null } : d
+      ),
+    })),
+
+  markDocumentError: (id, error) =>
+    set((state) => ({
+      documents: state.documents.map((d) =>
+        d.id === id ? { ...d, isIndexed: false, indexError: error } : d
       ),
     })),
 
@@ -380,13 +443,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // Optimistic UI update
     set((state) => ({
       profile: state.profile ? { ...state.profile, ...updates } : null,
     }));
 
-    // Update DB
-    const dbUpdates: any = {};
+    const dbUpdates: Record<string, unknown> = {};
     if (updates.name !== undefined) dbUpdates.name = updates.name;
     if (updates.rollNumber !== undefined) dbUpdates.roll_number = updates.rollNumber;
     if (updates.major !== undefined) dbUpdates.major = updates.major;

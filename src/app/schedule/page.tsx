@@ -7,15 +7,8 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useAppStore } from '@/store/useAppStore';
-import { cn } from '@/lib/utils';
-
-const daySchedule = [
-  { day: 'Monday', isToday: true },
-  { day: 'Tuesday', isToday: false },
-  { day: 'Wednesday', isToday: false },
-  { day: 'Thursday', isToday: false },
-  { day: 'Friday', isToday: false },
-];
+import { cn, getTodayName, totalHours } from '@/lib/utils';
+import { DAYS_OF_WEEK, type DayOfWeek } from '@/types';
 
 const typeIcons: Record<string, typeof BookOpen> = {
   Lecture: BookOpen,
@@ -29,11 +22,12 @@ import { Input } from '@/components/ui/input';
 import { Plus } from 'lucide-react';
 
 export default function SchedulePage() {
-  const classes = useAppStore((s) => s.classes);
+  const allClasses = useAppStore((s) => s.classes);
   const fetchData = useAppStore((s) => s.fetchData);
   const addClass = useAppStore((s) => s.addClass);
   const isLoading = useAppStore((s) => s.isLoading);
 
+  const [selectedDay, setSelectedDay] = useState<DayOfWeek>(getTodayName());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
@@ -42,11 +36,14 @@ export default function SchedulePage() {
     room: '',
     instructor: '',
     type: 'Lecture',
+    dayOfWeek: getTodayName() as string,
     startHour: 9,
     startMinute: 0,
     endHour: 10,
     endMinute: 0,
   });
+
+  const classes = allClasses.filter((c) => c.dayOfWeek === selectedDay);
 
   useEffect(() => {
     fetchData();
@@ -133,6 +130,18 @@ export default function SchedulePage() {
                   </select>
                 </div>
               </div>
+              <div>
+                <label className="text-xs font-medium text-slate-400 mb-1 block">Day of Week</label>
+                <select
+                  value={formData.dayOfWeek}
+                  onChange={(e) => setFormData({ ...formData, dayOfWeek: e.target.value })}
+                  className="w-full h-10 rounded-md border border-slate-800 bg-slate-950/50 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-cyan-500/50"
+                >
+                  {DAYS_OF_WEEK.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-medium text-slate-400 mb-1 block">Room</label>
@@ -207,20 +216,25 @@ export default function SchedulePage() {
 
       {/* Day tabs */}
       <div className="flex gap-2 overflow-x-auto pb-2">
-        {daySchedule.map(({ day, isToday }) => (
-          <button
-            key={day}
-            className={cn(
-              'px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap',
-              isToday
-                ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30'
-                : 'bg-slate-900 text-slate-400 border border-slate-800 hover:bg-slate-800 hover:text-slate-300'
-            )}
-          >
-            {day}
-            {isToday && <span className="ml-1.5 text-[10px]">(Today)</span>}
-          </button>
-        ))}
+        {DAYS_OF_WEEK.map((day) => {
+          const isToday = day === getTodayName();
+          const isSelected = day === selectedDay;
+          return (
+            <button
+              key={day}
+              onClick={() => setSelectedDay(day)}
+              className={cn(
+                'px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap',
+                isSelected
+                  ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30'
+                  : 'bg-slate-900 text-slate-400 border border-slate-800 hover:bg-slate-800 hover:text-slate-300'
+              )}
+            >
+              {day.slice(0, 3)}
+              {isToday && <span className="ml-1.5 text-[10px]">(Today)</span>}
+            </button>
+          );
+        })}
       </div>
 
       {/* Full schedule grid */}
@@ -309,7 +323,7 @@ export default function SchedulePage() {
               <p className="text-xs text-slate-500">Total Classes</p>
             </div>
             <div>
-              <p className="text-2xl font-bold text-slate-100">6.5</p>
+              <p className="text-2xl font-bold text-slate-100">{totalHours(classes)}</p>
               <p className="text-xs text-slate-500">Hours</p>
             </div>
             <div>

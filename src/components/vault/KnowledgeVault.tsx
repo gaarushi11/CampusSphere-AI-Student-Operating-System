@@ -4,15 +4,16 @@ import { useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
   Upload, FileText, FileSpreadsheet, FileImage,
-  Check, Loader2, Search, Brain, Sparkles, Trash2
+  Check, Loader2, Search, Brain, Sparkles, Trash2, AlertTriangle, XCircle
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/store/useAppStore';
-import type { Document } from '@/types';
+import type { Document, DocumentCategory } from '@/types';
 import { cn, getRelativeTime } from '@/lib/utils';
+import { createClient } from '@/utils/supabase/client';
 
 const fileTypeConfig: Record<string, { icon: typeof FileText; color: string; bg: string }> = {
   PDF: { icon: FileText, color: 'text-rose-400', bg: 'bg-rose-500/10' },
@@ -20,12 +21,20 @@ const fileTypeConfig: Record<string, { icon: typeof FileText; color: string; bg:
   DOCX: { icon: FileImage, color: 'text-blue-400', bg: 'bg-blue-500/10' },
 };
 
-import { createClient } from '@/utils/supabase/client';
+function detectCategory(filename: string): DocumentCategory {
+  const lower = filename.toLowerCase();
+  if (lower.includes('timetable') || lower.includes('schedule') || lower.includes('time-table')) return 'Timetable';
+  if (lower.includes('syllabus') || lower.includes('curriculum')) return 'Syllabus';
+  if (lower.includes('notes') || lower.includes('lecture') || lower.includes('tutorial')) return 'Notes';
+  return 'Other';
+}
 
 export function KnowledgeVault() {
   const documents = useAppStore((s) => s.documents);
   const addDocument = useAppStore((s) => s.addDocument);
   const removeDocument = useAppStore((s) => s.removeDocument);
+  const markDocumentIndexed = useAppStore((s) => s.markDocumentIndexed);
+  const markDocumentError = useAppStore((s) => s.markDocumentError);
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -63,8 +72,8 @@ export function KnowledgeVault() {
         const ext = file.name.split('.').pop()?.toUpperCase() as 'PDF' | 'PPTX' | 'DOCX';
         const fileType = ext === 'PDF' || ext === 'PPTX' || ext === 'DOCX' ? ext : 'PDF';
         const fileSizeStr = `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
+        const category = detectCategory(file.name);
         
-        // Clean filename for storage
         const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
         const filePath = `${user.id}/${Date.now()}_${safeName}`;
 
@@ -78,10 +87,10 @@ export function KnowledgeVault() {
           continue;
         }
 
-        // 2. Add to database via store
         const documentId = await addDocument({
           name: file.name,
           type: fileType,
+          category,
           size: fileSizeStr,
           subject: 'Uploaded Document',
           isIndexed: false,
@@ -90,7 +99,7 @@ export function KnowledgeVault() {
 
         if (!documentId) continue;
 
-        // 3. Trigger backend indexing (Bedrock embeddings)
+        // Trigger backend indexing
         fetch('/api/documents/index', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -100,23 +109,50 @@ export function KnowledgeVault() {
             userId: user.id,
           })
         }).then(async res => {
+          const data = await res.json();
           if (!res.ok) {
-            const data = await res.json();
             console.error('Indexing failed', data);
-            alert(`Indexing failed: ${data.error || 'Unknown error'}`);
+            markDocumentError(documentId, data.error || 'Unknown indexing error');
           } else {
-            // Update frontend state so it stops rotating
-            useAppStore.getState().markDocumentIndexed(documentId);
+            markDocumentIndexed(documentId);
           }
         }).catch(err => {
           console.error('Network error during indexing:', err);
+          markDocumentError(documentId, 'Network error — check if the server is running.');
         });
       }
 
       setUploading(false);
     },
-    [addDocument]
+    [addDocument, markDocumentIndexed, markDocumentError]
   );
+
+  const renderDocStatus = (doc: Document) => {
+    if (doc.indexError) {
+      return (
+        <Badge className="text-[9px] py-0 px-1.5 bg-rose-500/15 text-rose-400 border-rose-500/30 gap-0.5 cursor-help max-w-[160px] truncate"
+          title={doc.indexError}
+        >
+          <XCircle className="w-2.5 h-2.5 flex-shrink-0" />
+          Failed
+        </Badge>
+      );
+    }
+    if (doc.isIndexed) {
+      return (
+        <Badge className="text-[9px] py-0 px-1.5 bg-emerald-500/15 text-emerald-400 border-emerald-500/30 gap-0.5">
+          <Check className="w-2.5 h-2.5" />
+          Indexed
+        </Badge>
+      );
+    }
+    return (
+      <Badge className="text-[9px] py-0 px-1.5 bg-amber-500/15 text-amber-400 border-amber-500/30 gap-0.5">
+        <Loader2 className="w-2.5 h-2.5 animate-spin" />
+        Indexing
+      </Badge>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -172,7 +208,7 @@ export function KnowledgeVault() {
                 className="flex flex-col items-center gap-3"
               >
                 <Loader2 className="w-10 h-10 text-cyan-400 animate-spin" />
-                <p className="text-sm text-cyan-400 font-medium">Uploading to S3 & indexing with Bedrock...</p>
+                <p className="text-sm text-cyan-400 font-medium">Uploading & indexing with Bedrock...</p>
                 <div className="w-48 h-1.5 bg-slate-800 rounded-full overflow-hidden">
                   <motion.div
                     className="h-full bg-gradient-to-r from-cyan-500 to-violet-500 rounded-full"
@@ -244,24 +280,16 @@ export function KnowledgeVault() {
                         <h4 className="text-sm font-medium text-slate-200 truncate group-hover:text-cyan-400 transition-colors">
                           {doc.name}
                         </h4>
-                        <p className="text-[11px] text-slate-500 mt-0.5">{doc.subject}</p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          {doc.category !== 'Other' ? doc.category : doc.subject}
+                        </p>
                         <div className="flex items-center gap-3 mt-2 flex-wrap">
                           <span className="text-[10px] text-slate-600">{doc.size}</span>
                           <span className="text-[10px] text-slate-600">{doc.pageCount} pages</span>
                           <span className="text-[10px] text-slate-600" suppressHydrationWarning>
                             {getRelativeTime(doc.uploadedAt)}
                           </span>
-                          {doc.isIndexed ? (
-                            <Badge className="text-[9px] py-0 px-1.5 bg-emerald-500/15 text-emerald-400 border-emerald-500/30 gap-0.5">
-                              <Check className="w-2.5 h-2.5" />
-                              Indexed
-                            </Badge>
-                          ) : (
-                            <Badge className="text-[9px] py-0 px-1.5 bg-amber-500/15 text-amber-400 border-amber-500/30 gap-0.5">
-                              <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                              Indexing
-                            </Badge>
-                          )}
+                          {renderDocStatus(doc)}
                         </div>
                       </div>
                       <Button

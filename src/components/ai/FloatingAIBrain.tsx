@@ -140,6 +140,7 @@ export function FloatingAIBrain() {
         role: 'assistant',
         content: data.content,
         timestamp: new Date(),
+        sources: data.sources || [],
       };
       setIsTyping(false);
       addMessage(aiMsg);
