@@ -19,7 +19,8 @@ const typeIcons: Record<string, typeof BookOpen> = {
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus } from 'lucide-react';
+import { Plus, Sparkles } from 'lucide-react';
+import { TimetablePreviewModal } from '@/components/vault/TimetablePreviewModal';
 
 export default function SchedulePage() {
   const allClasses = useAppStore((s) => s.classes);
@@ -29,6 +30,7 @@ export default function SchedulePage() {
 
   const [selectedDay, setSelectedDay] = useState<DayOfWeek>(getTodayName());
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
@@ -78,15 +80,35 @@ export default function SchedulePage() {
             Your complete class schedule for the week. Today&apos;s classes are highlighted.
           </p>
         </div>
-        <Button
-          onClick={() => setIsModalOpen(true)}
-          className="bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/30 w-full md:w-auto"
-        >
-          <Plus className="w-4 h-4 mr-2" /> Add Class
-        </Button>
+        <div className="flex gap-3 w-full md:w-auto">
+          <Button
+            onClick={() => setIsAIModalOpen(true)}
+            variant="outline"
+            className="flex-1 md:flex-none border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10"
+          >
+            <Sparkles className="w-4 h-4 mr-2" /> AI Import
+          </Button>
+          <Button
+            onClick={() => setIsModalOpen(true)}
+            className="flex-1 md:flex-none bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-semibold"
+          >
+            <Plus className="w-4 h-4 mr-2" /> Add Class
+          </Button>
+        </div>
       </div>
 
       {/* Add Class Modal */}
+      {isAIModalOpen && (
+        <TimetablePreviewModal
+          onClose={() => setIsAIModalOpen(false)}
+          onSuccess={() => {
+            setIsAIModalOpen(false);
+            fetchData();
+          }}
+        />
+      )}
+
+      {/* Manual Add Class Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
           <motion.div

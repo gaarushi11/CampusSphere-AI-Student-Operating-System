@@ -23,19 +23,33 @@ export async function extractTextFromFile(buffer: Buffer, fileExt: string): Prom
 }
 
 async function extractFromPdf(buffer: Buffer, warnings: string[]): Promise<ExtractedDocument> {
-  try {
-    const pdfParse = (await import('pdf-parse')).default;
-    const data = await pdfParse(buffer);
+  return new Promise((resolve, reject) => {
+    try {
+      import('pdf2json').then((PDFParserModule) => {
+        const PDFParser = PDFParserModule.default || PDFParserModule;
+        const pdfParser = new PDFParser(null, 1);
 
-    if (!data.text || data.text.trim().length < MIN_TEXT_LENGTH) {
-      warnings.push('Very little text was extracted. This PDF may be a scanned image without an OCR text layer.');
+        pdfParser.on('pdfParser_dataError', (errData: any) => {
+          reject(new Error(`PDF parsing failed: ${errData.parserError}`));
+        });
+
+        pdfParser.on('pdfParser_dataReady', () => {
+          const text = pdfParser.getRawTextContent();
+          if (!text || text.trim().length < MIN_TEXT_LENGTH) {
+            warnings.push('Very little text was extracted. This PDF may be a scanned image without an OCR text layer.');
+          }
+          // pdf2json doesn't give an easy page count in raw text mode, so we estimate based on text length
+          const estimatedPages = Math.max(1, Math.round(text.split(/\s+/).length / 400));
+          resolve({ text, pageCount: estimatedPages, warnings });
+        });
+
+        pdfParser.parseBuffer(buffer);
+      }).catch(reject);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      reject(new Error(`PDF parsing failed: ${message}`));
     }
-
-    return { text: data.text || '', pageCount: data.numpages || 1, warnings };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`PDF parsing failed: ${message}`);
-  }
+  });
 }
 
 async function extractFromDocx(buffer: Buffer, warnings: string[]): Promise<ExtractedDocument> {

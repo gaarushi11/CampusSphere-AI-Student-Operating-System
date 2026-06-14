@@ -1,11 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    serverComponentsExternalPackages: ['pdf-parse', 'mammoth'],
+    serverComponentsExternalPackages: ['pdf2json', 'mammoth'],
   },
   webpack: (config, { isServer }) => {
     if (isServer) {
-      config.externals.push('pdf-parse', 'mammoth');
+      config.externals.push('pdf2json', 'mammoth');
     }
     return config;
   },
