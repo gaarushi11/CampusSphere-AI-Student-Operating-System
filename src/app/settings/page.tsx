@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   User, Mail, Building, Hash, GraduationCap,
@@ -8,52 +9,12 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useAppStore } from '@/store/useAppStore';
-
-const settingsSections = [
-  {
-    title: 'Notifications',
-    icon: Bell,
-    settings: [
-      { label: 'Assignment reminders', enabled: true },
-      { label: 'Attendance alerts', enabled: true },
-      { label: 'Placement notifications', enabled: true },
-      { label: 'Hostel notices', enabled: false },
-    ],
-  },
-  {
-    title: 'Appearance',
-    icon: Moon,
-    settings: [
-      { label: 'Dark mode (always on)', enabled: true },
-      { label: 'Compact view', enabled: false },
-      { label: 'Animations', enabled: true },
-    ],
-  },
-  {
-    title: 'AI Preferences',
-    icon: Globe,
-    settings: [
-      { label: 'Auto-summarize notices', enabled: true },
-      { label: 'Proactive deadline alerts', enabled: true },
-      { label: 'WhatsApp message extraction', enabled: true },
-    ],
-  },
-  {
-    title: 'Privacy & Security',
-    icon: Shield,
-    settings: [
-      { label: 'Share analytics with campus', enabled: false },
-      { label: 'Two-factor authentication', enabled: true },
-      { label: 'Data stored on AWS (encrypted)', enabled: true },
-    ],
-  },
-];
-
-import { useState } from 'react';
+import { DEFAULT_SETTINGS } from '@/types';
 
 export default function SettingsPage() {
   const profile = useAppStore((s) => s.profile);
   const updateProfile = useAppStore((s) => s.updateProfile);
+  const updateSettings = useAppStore((s) => s.updateSettings);
   
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -65,10 +26,56 @@ export default function SettingsPage() {
     hostelRoom: profile?.hostelRoom || '',
   });
 
-  const handleSave = async () => {
+  const settings = profile?.settings || DEFAULT_SETTINGS;
+
+  const handleSaveProfile = async () => {
     await updateProfile(editForm);
     setIsEditing(false);
   };
+
+  const handleToggle = async (key: keyof typeof DEFAULT_SETTINGS) => {
+    const newValue = !settings[key];
+    await updateSettings({ [key]: newValue });
+  };
+
+  const settingsSections = [
+    {
+      title: 'Notifications',
+      icon: Bell,
+      items: [
+        { key: 'notifications_assignments', label: 'Assignment reminders' },
+        { key: 'notifications_attendance', label: 'Attendance alerts' },
+        { key: 'notifications_placement', label: 'Placement notifications' },
+        { key: 'notifications_hostel', label: 'Hostel notices' },
+      ],
+    },
+    {
+      title: 'Appearance',
+      icon: Moon,
+      items: [
+        { key: 'appearance_dark_mode', label: 'Dark mode (always on)' },
+        { key: 'appearance_compact', label: 'Compact view' },
+        { key: 'appearance_animations', label: 'Animations' },
+      ],
+    },
+    {
+      title: 'AI Preferences',
+      icon: Globe,
+      items: [
+        { key: 'ai_auto_summarize', label: 'Auto-summarize notices' },
+        { key: 'ai_deadline_alerts', label: 'Proactive deadline alerts' },
+        { key: 'ai_whatsapp_extraction', label: 'WhatsApp message extraction' },
+      ],
+    },
+    {
+      title: 'Privacy & Security',
+      icon: Shield,
+      items: [
+        { key: 'privacy_share_analytics', label: 'Share analytics with campus' },
+        { key: 'privacy_2fa', label: 'Two-factor authentication' },
+      ],
+    },
+  ] as const;
 
   const profileFields = [
     { label: 'Full Name', value: profile?.name || 'Loading...', icon: User },
@@ -102,7 +109,7 @@ export default function SettingsPage() {
             <button
               onClick={() => {
                 if (isEditing) {
-                  handleSave();
+                  handleSaveProfile();
                 } else {
                   setEditForm({
                     name: profile?.name || '',
@@ -228,25 +235,29 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {section.settings.map((setting) => (
-                  <div
-                    key={setting.label}
-                    className="flex items-center justify-between py-2"
-                  >
-                    <span className="text-sm text-slate-300">{setting.label}</span>
-                    <button
-                      className={`w-10 h-5 rounded-full transition-colors relative ${
-                        setting.enabled ? 'bg-cyan-500' : 'bg-slate-700'
-                      }`}
+                {section.items.map((item) => {
+                  const isEnabled = settings[item.key as keyof typeof DEFAULT_SETTINGS];
+                  return (
+                    <div
+                      key={item.key}
+                      className="flex items-center justify-between py-2"
                     >
-                      <div
-                        className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
-                          setting.enabled ? 'translate-x-5' : 'translate-x-0.5'
+                      <span className="text-sm text-slate-300">{item.label}</span>
+                      <button
+                        onClick={() => handleToggle(item.key as keyof typeof DEFAULT_SETTINGS)}
+                        className={`w-10 h-5 rounded-full transition-colors relative ${
+                          isEnabled ? 'bg-cyan-500' : 'bg-slate-700'
                         }`}
-                      />
-                    </button>
-                  </div>
-                ))}
+                      >
+                        <div
+                          className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                            isEnabled ? 'translate-x-5' : 'translate-x-0.5'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>

@@ -7,6 +7,7 @@ import { TodayTimeline } from './TodayTimeline';
 import { TaskPrioritizer } from './TaskPrioritizer';
 import { AttendanceWidget } from './AttendanceWidget';
 import { CampusRadar } from './CampusRadar';
+import { PocketBuddyWidget } from './PocketBuddyWidget';
 import { useAppStore } from '@/store/useAppStore';
 
 import { useEffect } from 'react';
@@ -19,6 +20,9 @@ export function DashboardGrid() {
   const tasks = useAppStore((s) => s.tasks);
   const classes = useAppStore((s) => s.classes);
   const notices = useAppStore((s) => s.notices);
+  const expenses = useAppStore((s) => s.expenses);
+  const budgetGoals = useAppStore((s) => s.budgetGoals);
+  const wellnessLogs = useAppStore((s) => s.wellnessLogs);
 
   useEffect(() => {
     fetchData();
@@ -55,6 +59,24 @@ export function DashboardGrid() {
     urgentItemsCount += urgentNotices.length;
     if (urgentNotices.length > 0) {
       digestParts.push(`${urgentNotices.length} unread important notice${urgentNotices.length > 1 ? 's' : ''}`);
+    }
+
+    // 4. Budget Overspend
+    const now = new Date();
+    const monthExpenses = expenses.filter(e => new Date(e.date).getMonth() === now.getMonth());
+    const totalSpent = monthExpenses.reduce((sum, e) => sum + e.amount, 0);
+    const totalBudget = budgetGoals.reduce((sum, b) => sum + b.monthlyLimit, 0);
+    if (totalBudget > 0 && totalSpent > totalBudget) {
+      urgentItemsCount += 1;
+      digestParts.push(`monthly budget exceeded by ₹${totalSpent - totalBudget}`);
+    }
+
+    // 5. Burnout Risk
+    const recentLogs = wellnessLogs.slice(0, 7);
+    const stressedDays = recentLogs.filter(w => w.stressLevel >= 4 && w.sleepHours <= 5).length;
+    if (stressedDays >= 3) {
+      urgentItemsCount += 1;
+      digestParts.push(`burnout risk detected (${stressedDays} days high stress)`);
     }
   }
 
@@ -115,7 +137,7 @@ export function DashboardGrid() {
       </motion.div>
 
       {/* Main Dashboard Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -134,9 +156,15 @@ export function DashboardGrid() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3, duration: 0.5 }}
-          className="md:col-span-2 xl:col-span-1"
         >
           <AttendanceWidget />
+        </motion.div>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4, duration: 0.5 }}
+        >
+          <PocketBuddyWidget />
         </motion.div>
       </div>
 

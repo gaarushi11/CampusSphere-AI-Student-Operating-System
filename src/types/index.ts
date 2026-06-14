@@ -1,10 +1,7 @@
 // src/types/index.ts
 //
-// CHANGES FROM ORIGINAL:
-// - ClassSession: added `dayOfWeek` — REQUIRED for per-day schedule filtering.
-// - Document: added `category`, `indexError`, `chunkCount`, `filePath`
-// - ChatMessage: added `sources` — RAG citations shown in chat UI.
-// - New `ExtractedClass` — shape returned by AI timetable parser.
+// CampusFlow — Complete Type Definitions
+// All interfaces map 1:1 to Supabase tables (snake_case → camelCase)
 
 export const DAYS_OF_WEEK = [
   'Monday',
@@ -18,19 +15,7 @@ export const DAYS_OF_WEEK = [
 
 export type DayOfWeek = (typeof DAYS_OF_WEEK)[number];
 
-export interface DocumentChunk {
-  id: string;
-  documentId: string;
-  content: string;
-  chunkIndex: number;
-}
-
-export interface AttendanceLog {
-  id: string;
-  classId: string;
-  date: string; // YYYY-MM-DD
-  status: 'Present' | 'Absent' | 'Cancelled';
-}
+// ── Core Models ────────────────────────────────────────────
 
 export interface Profile {
   id: string;
@@ -42,7 +27,39 @@ export interface Profile {
   cgpa: number;
   avatarUrl?: string;
   hostelRoom: string;
+  settings?: UserSettings;
 }
+
+export interface UserSettings {
+  notifications_assignments: boolean;
+  notifications_attendance: boolean;
+  notifications_placement: boolean;
+  notifications_hostel: boolean;
+  appearance_dark_mode: boolean;
+  appearance_compact: boolean;
+  appearance_animations: boolean;
+  ai_auto_summarize: boolean;
+  ai_deadline_alerts: boolean;
+  ai_whatsapp_extraction: boolean;
+  privacy_share_analytics: boolean;
+  privacy_2fa: boolean;
+  read_notices?: string[];
+}
+
+export const DEFAULT_SETTINGS: UserSettings = {
+  notifications_assignments: true,
+  notifications_attendance: true,
+  notifications_placement: true,
+  notifications_hostel: false,
+  appearance_dark_mode: true,
+  appearance_compact: false,
+  appearance_animations: true,
+  ai_auto_summarize: true,
+  ai_deadline_alerts: true,
+  ai_whatsapp_extraction: true,
+  privacy_share_analytics: false,
+  privacy_2fa: true,
+};
 
 export interface ClassSession {
   id: string;
@@ -61,14 +78,11 @@ export interface ClassSession {
   color: string;
 }
 
-export interface Notice {
+export interface AttendanceLog {
   id: string;
-  title: string;
-  excerpt: string;
-  category: 'Academic' | 'Hostel' | 'Placement' | 'Urgent';
-  datePosted: string;
-  isRead: boolean;
-  postedBy: string;
+  classId: string;
+  date: string; // YYYY-MM-DD
+  status: 'Present' | 'Absent' | 'Cancelled';
 }
 
 export interface Task {
@@ -82,6 +96,18 @@ export interface Task {
   completed: boolean;
   subject: string;
 }
+
+export interface Notice {
+  id: string;
+  title: string;
+  excerpt: string;
+  category: 'Academic' | 'Hostel' | 'Placement' | 'Urgent';
+  datePosted: string;
+  isRead: boolean;
+  postedBy: string;
+}
+
+// ── Knowledge Vault (RAG) ──────────────────────────────────
 
 export type DocumentCategory = 'Syllabus' | 'Timetable' | 'Notes' | 'Other';
 
@@ -98,6 +124,13 @@ export interface Document {
   chunkCount?: number;
   indexError?: string | null;
   filePath?: string;
+}
+
+export interface DocumentChunk {
+  id: string;
+  documentId: string;
+  content: string;
+  chunkIndex: number;
 }
 
 export interface ChatSource {
@@ -124,7 +157,7 @@ export interface AttendanceStat {
   status: 'safe' | 'warning' | 'danger';
 }
 
-// ── Timetable extraction (AI parsing) ──────────────────────────
+// ── Timetable extraction (AI parsing) ──────────────────────
 export interface ExtractedClass {
   title: string;
   shortCode: string;
@@ -141,4 +174,56 @@ export interface ExtractedClass {
 export interface TimetableExtractionResult {
   classes: ExtractedClass[];
   warnings: string[];
+}
+
+// ── PocketBuddy: Expenses ──────────────────────────────────
+
+export type ExpenseCategory = 'Food' | 'Transport' | 'Entertainment' | 'Academic' | 'Shopping' | 'Health' | 'Other';
+
+export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
+  'Food', 'Transport', 'Entertainment', 'Academic', 'Shopping', 'Health', 'Other'
+];
+
+export interface Expense {
+  id: string;
+  amount: number;
+  category: ExpenseCategory;
+  description: string;
+  date: string; // YYYY-MM-DD
+}
+
+export interface BudgetGoal {
+  id: string;
+  category: ExpenseCategory;
+  monthlyLimit: number;
+}
+
+// ── PocketBuddy: Wellness ──────────────────────────────────
+
+export interface WellnessLog {
+  id: string;
+  date: string; // YYYY-MM-DD
+  mood: number; // 1-5
+  sleepHours: number;
+  stressLevel: number; // 1-5
+  notes: string;
+}
+
+// ── Campus Events ──────────────────────────────────────────
+
+export type EventCategory = 'Academic' | 'Club' | 'Placement' | 'Social' | 'Sports' | 'Hackathon' | 'Workshop';
+
+export const EVENT_CATEGORIES: EventCategory[] = [
+  'Academic', 'Club', 'Placement', 'Social', 'Sports', 'Hackathon', 'Workshop'
+];
+
+export interface CampusEvent {
+  id: string;
+  title: string;
+  description: string;
+  eventDate: string; // ISO string
+  location: string;
+  category: EventCategory;
+  createdBy: string;
+  createdByName: string;
 }

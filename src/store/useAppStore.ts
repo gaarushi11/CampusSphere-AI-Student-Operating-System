@@ -1,9 +1,15 @@
 import { create } from 'zustand';
-import type { Task, Notice, ChatMessage, Document, ClassSession, Profile, ExtractedClass, DayOfWeek, AttendanceLog } from '@/types';
+import type {
+  Task, Notice, ChatMessage, Document, ClassSession, Profile,
+  ExtractedClass, DayOfWeek, AttendanceLog,
+  Expense, ExpenseCategory, BudgetGoal, WellnessLog,
+  CampusEvent, EventCategory, UserSettings, DEFAULT_SETTINGS,
+} from '@/types';
 import { createClient } from '@/utils/supabase/client';
 import { colorForClass } from '@/lib/utils';
 
 interface AppState {
+  // ── Existing ──
   profile: Profile | null;
   classes: ClassSession[];
   attendanceLogs: AttendanceLog[];
@@ -15,6 +21,15 @@ interface AppState {
   activeNavItem: string;
   isLoading: boolean;
 
+  // ── PocketBuddy ──
+  expenses: Expense[];
+  budgetGoals: BudgetGoal[];
+  wellnessLogs: WellnessLog[];
+
+  // ── Campus Events ──
+  campusEvents: CampusEvent[];
+
+  // ── Existing Actions ──
   fetchData: () => Promise<void>;
   toggleTask: (id: string, currentStatus: boolean) => Promise<void>;
   markNoticeRead: (id: string) => Promise<void>;
@@ -32,6 +47,19 @@ interface AppState {
   setIsChatOpen: (open: boolean) => void;
   setActiveNavItem: (item: string) => void;
   markAttendance: (classId: string, date: string, status: 'Present' | 'Absent' | 'Cancelled') => Promise<void>;
+
+  // ── PocketBuddy Actions ──
+  addExpense: (expense: Omit<Expense, 'id'>) => Promise<void>;
+  deleteExpense: (id: string) => Promise<void>;
+  setBudgetGoal: (category: ExpenseCategory, monthlyLimit: number) => Promise<void>;
+  logWellness: (log: Omit<WellnessLog, 'id'>) => Promise<void>;
+
+  // ── Campus Events Actions ──
+  addCampusEvent: (event: Omit<CampusEvent, 'id' | 'createdBy' | 'createdByName'>) => Promise<void>;
+  deleteCampusEvent: (id: string) => Promise<void>;
+
+  // ── Settings Actions ──
+  updateSettings: (settings: Partial<UserSettings>) => Promise<void>;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -46,6 +74,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeNavItem: 'dashboard',
   isLoading: true,
 
+  // ── PocketBuddy State ──
+  expenses: [],
+  budgetGoals: [],
+  wellnessLogs: [],
+
+  // ── Campus Events State ──
+  campusEvents: [],
+
+  // ════════════════════════════════════════════════════════════
+  // FETCH ALL DATA — Single entry point for hydration
+  // ════════════════════════════════════════════════════════════
   fetchData: async () => {
     set({ isLoading: true });
     const supabase = createClient();
@@ -56,49 +95,36 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
 
-    const { data: profileData } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .single();
+    // Parallel fetch for maximum speed
+    const [
+      profileRes, classesRes, tasksRes, noticesRes,
+      documentsRes, attendanceRes, expensesRes,
+      budgetRes, wellnessRes, eventsRes,
+    ] = await Promise.all([
+      supabase.from('profiles').select('*').eq('id', user.id).single(),
+      supabase.from('classes').select('*').eq('user_id', user.id).order('start_hour', { ascending: true }),
+      supabase.from('tasks').select('*').eq('user_id', user.id).order('due_date', { ascending: true }),
+      supabase.from('notices').select('*').order('timestamp', { ascending: false }),
+      supabase.from('documents').select('*').eq('user_id', user.id).order('uploaded_at', { ascending: false }),
+      supabase.from('attendance_logs').select('*').eq('user_id', user.id),
+      supabase.from('expenses').select('*').eq('user_id', user.id).order('date', { ascending: false }),
+      supabase.from('budget_goals').select('*').eq('user_id', user.id),
+      supabase.from('wellness_logs').select('*').eq('user_id', user.id).order('date', { ascending: false }).limit(30),
+      supabase.from('campus_events').select('*').order('event_date', { ascending: true }),
+    ]);
 
-    const { data: classesData } = await supabase
-      .from('classes')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('start_hour', { ascending: true });
+    const profileData = profileRes.data;
+    const attendanceData = attendanceRes.data || [];
+    const classesData = classesRes.data || [];
 
-    const { data: tasksData } = await supabase
-      .from('tasks')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('due_date', { ascending: true });
-
-    const { data: noticesData } = await supabase
-      .from('notices')
-      .select('*')
-      .order('timestamp', { ascending: false });
-
-    const { data: documentsData } = await supabase
-      .from('documents')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('uploaded_at', { ascending: false });
-
-    const { data: attendanceData } = await supabase
-      .from('attendance_logs')
-      .select('*')
-      .eq('user_id', user.id);
-
-    const mappedAttendance: AttendanceLog[] = (attendanceData || []).map((a) => ({
+    const mappedAttendance: AttendanceLog[] = attendanceData.map((a: any) => ({
       id: a.id,
       classId: a.class_id,
       date: a.date,
       status: a.status as AttendanceLog['status']
     }));
 
-    const mappedClasses: ClassSession[] = (classesData || []).map((c) => {
-      // Dynamically calculate attendance percentage
+    const mappedClasses: ClassSession[] = classesData.map((c: any) => {
       const logsForClass = mappedAttendance.filter(a => a.classId === c.id && a.status !== 'Cancelled');
       let calculatedPercentage = c.attendance_percentage ?? 100;
       if (logsForClass.length > 0) {
@@ -124,7 +150,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       };
     });
 
-    const mappedTasks: Task[] = (tasksData || []).map((t) => {
+    const mappedTasks: Task[] = (tasksRes.data || []).map((t: any) => {
       const dueDate = new Date(t.due_date);
       return {
         id: t.id,
@@ -139,17 +165,19 @@ export const useAppStore = create<AppState>((set, get) => ({
       };
     });
 
-    const mappedNotices: Notice[] = (noticesData || []).map((n) => ({
+    const readNotices = profileData?.settings?.read_notices || [];
+
+    const mappedNotices: Notice[] = (noticesRes.data || []).map((n: any) => ({
       id: n.id,
       title: n.title,
       excerpt: n.description,
       category: n.category as Notice['category'],
       postedBy: n.sender,
-      isRead: n.is_read,
+      isRead: readNotices.includes(n.id) || n.is_read,
       datePosted: new Date(n.timestamp).toISOString(),
     }));
 
-    const mappedDocuments: Document[] = (documentsData || []).map((d) => ({
+    const mappedDocuments: Document[] = (documentsRes.data || []).map((d: any) => ({
       id: d.id,
       name: d.name,
       type: d.type as Document['type'],
@@ -164,6 +192,40 @@ export const useAppStore = create<AppState>((set, get) => ({
       filePath: d.file_path || undefined,
     }));
 
+    const mappedExpenses: Expense[] = (expensesRes.data || []).map((e: any) => ({
+      id: e.id,
+      amount: parseFloat(e.amount),
+      category: e.category as ExpenseCategory,
+      description: e.description || '',
+      date: e.date,
+    }));
+
+    const mappedBudgetGoals: BudgetGoal[] = (budgetRes.data || []).map((b: any) => ({
+      id: b.id,
+      category: b.category as ExpenseCategory,
+      monthlyLimit: parseFloat(b.monthly_limit),
+    }));
+
+    const mappedWellnessLogs: WellnessLog[] = (wellnessRes.data || []).map((w: any) => ({
+      id: w.id,
+      date: w.date,
+      mood: w.mood,
+      sleepHours: parseFloat(w.sleep_hours),
+      stressLevel: w.stress_level,
+      notes: w.notes || '',
+    }));
+
+    const mappedCampusEvents: CampusEvent[] = (eventsRes.data || []).map((e: any) => ({
+      id: e.id,
+      title: e.title,
+      description: e.description || '',
+      eventDate: new Date(e.event_date).toISOString(),
+      location: e.location || 'TBD',
+      category: e.category as EventCategory,
+      createdBy: e.created_by,
+      createdByName: e.created_by_name || 'Anonymous',
+    }));
+
     set({
       profile: profileData ? {
         id: profileData.id,
@@ -175,6 +237,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         cgpa: profileData.cgpa || 0.0,
         avatarUrl: profileData.avatar_url,
         hostelRoom: profileData.hostel_room || 'TBD',
+        settings: profileData.settings || undefined,
       } : {
         id: user.id,
         name: 'New Student',
@@ -190,9 +253,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       tasks: mappedTasks,
       notices: mappedNotices,
       documents: mappedDocuments,
+      expenses: mappedExpenses,
+      budgetGoals: mappedBudgetGoals,
+      wellnessLogs: mappedWellnessLogs,
+      campusEvents: mappedCampusEvents,
       isLoading: false,
     });
   },
+
+  // ════════════════════════════════════════════════════════════
+  // EXISTING ACTIONS (unchanged)
+  // ════════════════════════════════════════════════════════════
 
   toggleTask: async (id, currentStatus) => {
     set((state) => ({
@@ -209,6 +280,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   markNoticeRead: async (id) => {
+    // Optimistic UI update
     set((state) => ({
       notices: state.notices.map((n) =>
         n.id === id ? { ...n, isRead: true } : n
@@ -216,10 +288,34 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
 
     const supabase = createClient();
-    await supabase
-      .from('notices')
-      .update({ is_read: true })
-      .eq('id', id);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const currentProfile = get().profile;
+    const currentSettings = currentProfile?.settings || {};
+    const readNotices = currentSettings.read_notices || [];
+    
+    if (!readNotices.includes(id)) {
+      const newSettings = {
+        ...currentSettings,
+        read_notices: [...readNotices, id]
+      };
+      
+      // Update profile in store
+      set((state) => ({
+        profile: state.profile ? { ...state.profile, settings: newSettings as any } : null,
+      }));
+
+      // Persist to Supabase
+      const { error } = await supabase
+        .from('profiles')
+        .update({ settings: newSettings })
+        .eq('id', user.id);
+        
+      if (error) {
+        console.error('Error saving read notice:', error);
+      }
+    }
   },
 
   addTask: async (task) => {
@@ -400,7 +496,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
 
-    const newClasses: ClassSession[] = data.map((c) => ({
+    const newClasses: ClassSession[] = data.map((c: any) => ({
       id: c.id,
       title: c.title,
       shortCode: c.short_code,
@@ -486,7 +582,6 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (!user) return;
 
-    // Delete via API route (handles chunks + storage via service role key)
     try {
       const res = await fetch('/api/documents/delete', {
         method: 'DELETE',
@@ -551,9 +646,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // Optimistically update the local state
     set((state) => {
-      // 1. Update or add the attendance log
       let newLogs = [...state.attendanceLogs];
       const existingLogIndex = newLogs.findIndex(l => l.classId === classId && l.date === date);
       
@@ -563,7 +656,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         newLogs.push({ id: 'temp-' + Date.now(), classId, date, status });
       }
 
-      // 2. Recalculate percentage for this class
       const logsForClass = newLogs.filter(a => a.classId === classId && a.status !== 'Cancelled');
       let newPercentage = 100;
       if (logsForClass.length > 0) {
@@ -571,7 +663,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         newPercentage = Math.round((presentCount / logsForClass.length) * 100);
       }
 
-      // 3. Update the class in the state
       const newClasses = state.classes.map(c => 
         c.id === classId ? { ...c, attendancePercentage: newPercentage } : c
       );
@@ -582,7 +673,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       };
     });
 
-    // Send to database (Upsert)
     const { error } = await supabase
       .from('attendance_logs')
       .upsert({
@@ -594,7 +684,219 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (error) {
       console.error("Failed to mark attendance", error);
-      // We could revert optimistic update here, but for now we just log it
+    }
+  },
+
+  // ════════════════════════════════════════════════════════════
+  // POCKETBUDDY ACTIONS
+  // ════════════════════════════════════════════════════════════
+
+  addExpense: async (expense) => {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from('expenses')
+      .insert([{
+        user_id: user.id,
+        amount: expense.amount,
+        category: expense.category,
+        description: expense.description,
+        date: expense.date,
+      }])
+      .select()
+      .single();
+
+    if (error || !data) {
+      console.error('Error adding expense:', error);
+      return;
+    }
+
+    const newExpense: Expense = {
+      id: data.id,
+      amount: parseFloat(data.amount),
+      category: data.category as ExpenseCategory,
+      description: data.description || '',
+      date: data.date,
+    };
+
+    set((state) => ({
+      expenses: [newExpense, ...state.expenses],
+    }));
+  },
+
+  deleteExpense: async (id) => {
+    set((state) => ({
+      expenses: state.expenses.filter(e => e.id !== id),
+    }));
+
+    const supabase = createClient();
+    await supabase.from('expenses').delete().eq('id', id);
+  },
+
+  setBudgetGoal: async (category, monthlyLimit) => {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from('budget_goals')
+      .upsert({
+        user_id: user.id,
+        category,
+        monthly_limit: monthlyLimit,
+      }, { onConflict: 'user_id,category' })
+      .select()
+      .single();
+
+    if (error || !data) {
+      console.error('Error setting budget goal:', error);
+      return;
+    }
+
+    set((state) => {
+      const existing = state.budgetGoals.findIndex(b => b.category === category);
+      const newGoal: BudgetGoal = {
+        id: data.id,
+        category: data.category as ExpenseCategory,
+        monthlyLimit: parseFloat(data.monthly_limit),
+      };
+
+      if (existing >= 0) {
+        const updated = [...state.budgetGoals];
+        updated[existing] = newGoal;
+        return { budgetGoals: updated };
+      }
+      return { budgetGoals: [...state.budgetGoals, newGoal] };
+    });
+  },
+
+  logWellness: async (log) => {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from('wellness_logs')
+      .upsert({
+        user_id: user.id,
+        date: log.date,
+        mood: log.mood,
+        sleep_hours: log.sleepHours,
+        stress_level: log.stressLevel,
+        notes: log.notes,
+      }, { onConflict: 'user_id,date' })
+      .select()
+      .single();
+
+    if (error || !data) {
+      console.error('Error logging wellness:', error);
+      return;
+    }
+
+    const newLog: WellnessLog = {
+      id: data.id,
+      date: data.date,
+      mood: data.mood,
+      sleepHours: parseFloat(data.sleep_hours),
+      stressLevel: data.stress_level,
+      notes: data.notes || '',
+    };
+
+    set((state) => {
+      const existing = state.wellnessLogs.findIndex(w => w.date === log.date);
+      if (existing >= 0) {
+        const updated = [...state.wellnessLogs];
+        updated[existing] = newLog;
+        return { wellnessLogs: updated };
+      }
+      return { wellnessLogs: [newLog, ...state.wellnessLogs] };
+    });
+  },
+
+  // ════════════════════════════════════════════════════════════
+  // CAMPUS EVENTS ACTIONS
+  // ════════════════════════════════════════════════════════════
+
+  addCampusEvent: async (event) => {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const profile = get().profile;
+
+    const { data, error } = await supabase
+      .from('campus_events')
+      .insert([{
+        created_by: user.id,
+        title: event.title,
+        description: event.description,
+        event_date: event.eventDate,
+        location: event.location,
+        category: event.category,
+        created_by_name: profile?.name || 'Anonymous',
+      }])
+      .select()
+      .single();
+
+    if (error || !data) {
+      console.error('Error creating campus event:', error);
+      return;
+    }
+
+    const newEvent: CampusEvent = {
+      id: data.id,
+      title: data.title,
+      description: data.description || '',
+      eventDate: new Date(data.event_date).toISOString(),
+      location: data.location,
+      category: data.category as EventCategory,
+      createdBy: data.created_by,
+      createdByName: data.created_by_name || 'Anonymous',
+    };
+
+    set((state) => ({
+      campusEvents: [...state.campusEvents, newEvent].sort(
+        (a, b) => new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime()
+      ),
+    }));
+  },
+
+  deleteCampusEvent: async (id) => {
+    set((state) => ({
+      campusEvents: state.campusEvents.filter(e => e.id !== id),
+    }));
+
+    const supabase = createClient();
+    await supabase.from('campus_events').delete().eq('id', id);
+  },
+
+  // ════════════════════════════════════════════════════════════
+  // SETTINGS ACTIONS
+  // ════════════════════════════════════════════════════════════
+
+  updateSettings: async (settingsUpdate) => {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const currentProfile = get().profile;
+    const currentSettings = currentProfile?.settings || {};
+    const newSettings = { ...currentSettings, ...settingsUpdate };
+
+    // Optimistic update
+    set((state) => ({
+      profile: state.profile ? { ...state.profile, settings: newSettings as any } : null,
+    }));
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ settings: newSettings })
+      .eq('id', user.id);
+
+    if (error) {
+      console.error('Error saving settings:', error);
     }
   },
 }));

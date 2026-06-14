@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutDashboard, CalendarDays, Brain, Settings, Sparkles, LogOut
+  LayoutDashboard, CalendarDays, Brain, Settings, Sparkles, LogOut, Wallet
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store/useAppStore';
@@ -13,6 +13,7 @@ import { logout } from '@/app/auth/actions';
 const navItems = [
   { label: 'Dashboard', href: '/', icon: LayoutDashboard },
   { label: 'Schedule', href: '/schedule', icon: CalendarDays },
+  { label: 'PocketBuddy', href: '/pocket-buddy', icon: Wallet },
   { label: 'Knowledge Vault', href: '/vault', icon: Brain },
   { label: 'Settings', href: '/settings', icon: Settings },
 ];
