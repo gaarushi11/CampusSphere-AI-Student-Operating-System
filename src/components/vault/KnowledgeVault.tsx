@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
   Upload, FileText, FileSpreadsheet, FileImage,
-  Check, Loader2, Search, Brain, Sparkles,
+  Check, Loader2, Search, Brain, Sparkles, Trash2
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';

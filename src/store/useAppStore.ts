@@ -344,17 +344,27 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   removeDocument: async (id) => {
     const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
     
     // Optimistic UI update
     set((state) => ({
       documents: state.documents.filter((d) => d.id !== id),
     }));
 
-    // Actually delete from DB
-    const { error } = await supabase.from('documents').delete().eq('id', id);
-    if (error) {
+    if (!user) return;
+
+    // Actually delete from DB via API route to handle chunks and storage
+    try {
+      const res = await fetch('/api/documents/delete', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentId: id, userId: user.id })
+      });
+      if (!res.ok) {
+        console.error('Failed to delete document via API');
+      }
+    } catch (error) {
       console.error('Failed to delete document:', error);
-      // In a real app we might want to revert the optimistic update here
     }
   },
 
