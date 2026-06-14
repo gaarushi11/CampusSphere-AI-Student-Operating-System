@@ -15,18 +15,22 @@ export async function DELETE(req: NextRequest) {
     const supabase = createAdminClient();
 
     // 1. Fetch the file_path before deleting (need it to remove from storage)
-    const { data: doc, error: fetchError } = await supabase
-      .from('documents')
-      .select('file_path')
-      .eq('id', documentId)
-      .eq('user_id', userId)  // ownership check
-      .single();
-
-    if (fetchError || !doc) {
-      return NextResponse.json(
-        { error: 'Document not found or access denied' },
-        { status: 404 }
-      );
+    let filePath = null;
+    try {
+      const { data: doc, error: fetchError } = await supabase
+        .from('documents')
+        .select('file_path')
+        .eq('id', documentId)
+        .eq('user_id', userId)
+        .single();
+        
+      if (!fetchError && doc) {
+        filePath = doc.file_path;
+      } else {
+        console.warn('Could not fetch file_path for storage deletion:', fetchError?.message);
+      }
+    } catch (e) {
+      console.warn('Error fetching file_path:', e);
     }
 
     // 2. Delete document_chunks
@@ -47,10 +51,10 @@ export async function DELETE(req: NextRequest) {
     }
 
     // 4. Remove file from Supabase Storage
-    if (doc.file_path) {
+    if (filePath) {
       const { error: storageError } = await supabase.storage
         .from('vault_files')
-        .remove([doc.file_path]);
+        .remove([filePath]);
 
       if (storageError) {
         console.warn('[Delete] Storage removal warning:', storageError.message);
