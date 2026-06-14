@@ -12,6 +12,9 @@ interface RequestContext {
   profile?: Profile;
   tasks?: Task[];
   classes?: ClassSession[];
+  expenses?: any[];
+  budgetGoals?: any[];
+  wellnessLogs?: any[];
 }
 
 interface ChunkResult {
@@ -68,6 +71,14 @@ export async function POST(req: NextRequest) {
         '',
         "Their classes this week:",
         (context.classes || []).map((c) => `- ${c.dayOfWeek} ${c.time}: ${c.shortCode} ${c.title} in ${c.room} with ${c.instructor} (Attendance: ${c.attendancePercentage}%)`).join('\n') || 'None',
+        '',
+        "Their finances this month:",
+        (context.expenses || []).length > 0 ? `Total spent: ₹${context.expenses?.reduce((sum, e) => sum + parseFloat(e.amount), 0) || 0}` : 'No expenses logged.',
+        "Budget limits:",
+        (context.budgetGoals || []).map(b => `- ${b.category}: ₹${b.monthlyLimit}`).join('\n') || 'None set.',
+        '',
+        "Recent Wellness logs:",
+        (context.wellnessLogs || []).slice(0,3).map(w => `- Date: ${w.date}, Mood: ${w.mood}, Stress: ${w.stressLevel}/5, Sleep: ${w.sleepHours}h`).join('\n') || 'No logs.',
       ].join('\n');
     }
 

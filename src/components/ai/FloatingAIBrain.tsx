@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Brain, X, Send, Sparkles, BotMessageSquare, Paperclip, Loader2 } from 'lucide-react';
+import { Brain, X, Send, Sparkles, BotMessageSquare, Paperclip, Loader2, Mic } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/store/useAppStore';
 import { createClient } from '@/utils/supabase/client';
@@ -83,10 +83,12 @@ export function FloatingAIBrain() {
   const addDocument = useAppStore((s) => s.addDocument);
   const markDocumentIndexed = useAppStore((s) => s.markDocumentIndexed);
   const markDocumentError = useAppStore((s) => s.markDocumentError);
+  const profile = useAppStore((s) => s.profile);
 
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isUploadingContext, setIsUploadingContext] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -122,6 +124,9 @@ export function FloatingAIBrain() {
       const profile = useAppStore.getState().profile;
       const classes = useAppStore.getState().classes;
       const tasks = useAppStore.getState().tasks;
+      const expenses = useAppStore.getState().expenses;
+      const budgetGoals = useAppStore.getState().budgetGoals;
+      const wellnessLogs = useAppStore.getState().wellnessLogs;
 
       const res = await fetch('/api/chat', {
         method: 'POST',
@@ -131,7 +136,10 @@ export function FloatingAIBrain() {
           context: {
             profile,
             classes,
-            tasks: tasks.filter(t => !t.completed)
+            tasks: tasks.filter(t => !t.completed),
+            expenses,
+            budgetGoals,
+            wellnessLogs
           }
         }),
       });
@@ -159,6 +167,41 @@ export function FloatingAIBrain() {
         timestamp: new Date(),
       });
     }
+  };
+
+  const handleVoiceInput = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('Your browser does not support Speech Recognition. Try Chrome.');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      setIsListening(true);
+    };
+
+    recognition.onresult = (event: any) => {
+      const speechResult = event.results[0][0].transcript;
+      setInputValue(speechResult);
+      setIsListening(false);
+      // Optionally auto-send: sendMessage(speechResult);
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition error', event.error);
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognition.start();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -317,7 +360,7 @@ export function FloatingAIBrain() {
                   <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-violet-500/20 border border-cyan-500/20 flex items-center justify-center mb-3">
                     <BotMessageSquare className="w-6 h-6 text-cyan-400" />
                   </div>
-                  <h4 className="text-sm font-semibold text-slate-200 mb-1">Hi Rahul! 👋</h4>
+                  <h4 className="text-sm font-semibold text-slate-200 mb-1">Hi {profile?.name?.split(' ')[0] || 'Student'}! 👋</h4>
                   <p className="text-xs text-slate-500 mb-4 leading-relaxed">
                     I&apos;m your AI campus assistant. Ask me about classes, assignments, attendance, placements, or anything campus-related.
                   </p>
@@ -416,8 +459,21 @@ export function FloatingAIBrain() {
                   onKeyDown={handleKeyDown}
                   placeholder="Ask CampusFlow AI..."
                   className="flex-1 bg-slate-800/60 border border-slate-700/50 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all min-w-0"
-                  disabled={isTyping}
+                  disabled={isTyping || isListening}
                 />
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className={cn(
+                    "h-10 w-10 text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/10 flex-shrink-0 transition-colors",
+                    isListening && "text-rose-400 bg-rose-500/10 animate-pulse"
+                  )}
+                  onClick={handleVoiceInput}
+                  disabled={isTyping || isListening}
+                  title="Voice Input"
+                >
+                  <Mic className="w-4 h-4" />
+                </Button>
                 <Button
                   size="icon"
                   className="h-10 w-10 rounded-xl bg-gradient-to-br from-cyan-500 to-violet-600 hover:from-cyan-400 hover:to-violet-500 disabled:opacity-50"

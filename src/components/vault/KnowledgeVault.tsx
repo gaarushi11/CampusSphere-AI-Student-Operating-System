@@ -212,10 +212,13 @@ export function KnowledgeVault() {
             Upload syllabi, notes, and slides — CampusFlow AI indexes them for instant RAG-powered answers.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col items-end gap-2">
           <Badge variant="outline" className="text-cyan-400 border-cyan-500/30 bg-cyan-500/5 gap-1">
             <Sparkles className="w-3 h-3" />
             {documents.filter((d) => d.isIndexed).length} / {documents.length} Indexed
+          </Badge>
+          <Badge variant="outline" className="text-amber-400 border-amber-500/30 bg-amber-500/5 gap-1 text-[10px]">
+            Powered by AWS Bedrock & Titan Embeddings V2
           </Badge>
         </div>
       </div>

@@ -8,6 +8,7 @@ import { TaskPrioritizer } from './TaskPrioritizer';
 import { AttendanceWidget } from './AttendanceWidget';
 import { CampusRadar } from './CampusRadar';
 import { PocketBuddyWidget } from './PocketBuddyWidget';
+import { MagicPaste } from './MagicPaste';
 import { useAppStore } from '@/store/useAppStore';
 
 import { useEffect } from 'react';
@@ -65,18 +66,28 @@ export function DashboardGrid() {
     const now = new Date();
     const monthExpenses = expenses.filter(e => new Date(e.date).getMonth() === now.getMonth());
     const totalSpent = monthExpenses.reduce((sum, e) => sum + e.amount, 0);
+    const transportSpent = monthExpenses.filter(e => e.category === 'Transport').reduce((sum, e) => sum + e.amount, 0);
     const totalBudget = budgetGoals.reduce((sum, b) => sum + b.monthlyLimit, 0);
     if (totalBudget > 0 && totalSpent > totalBudget) {
       urgentItemsCount += 1;
-      digestParts.push(`monthly budget exceeded by ₹${totalSpent - totalBudget}`);
+      let msg = `monthly budget exceeded by ₹${totalSpent - totalBudget}.`;
+      if (transportSpent > 500) {
+        msg += ` **AWS AI Suggestion:** You spent ₹${transportSpent} on transport. Switch to Campus Shuttle to save money.`;
+      }
+      digestParts.push(msg);
     }
 
     // 5. Burnout Risk
     const recentLogs = wellnessLogs.slice(0, 7);
     const stressedDays = recentLogs.filter(w => w.stressLevel >= 4 && w.sleepHours <= 5).length;
-    if (stressedDays >= 3) {
+    if (stressedDays >= 2) {
       urgentItemsCount += 1;
-      digestParts.push(`burnout risk detected (${stressedDays} days high stress)`);
+      const safeClasses = classes.filter(c => c.attendancePercentage > 85);
+      let msg = `burnout risk detected (${stressedDays} days high stress).`;
+      if (safeClasses.length > 0) {
+         msg += ` **AWS AI Suggestion:** You can safely skip your next ${safeClasses[0].title} lecture to rest, as attendance is ${safeClasses[0].attendancePercentage}%.`;
+      }
+      digestParts.push(msg);
     }
   }
 
@@ -136,33 +147,42 @@ export function DashboardGrid() {
         </div>
       </motion.div>
 
+      {/* Magic Paste - Full Width */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1, duration: 0.5 }}
+      >
+        <MagicPaste />
+      </motion.div>
+
       {/* Main Dashboard Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1, duration: 0.5 }}
+          transition={{ delay: 0.2, duration: 0.5 }}
         >
           <TodayTimeline />
         </motion.div>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2, duration: 0.5 }}
+          transition={{ delay: 0.3, duration: 0.5 }}
         >
           <TaskPrioritizer />
         </motion.div>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3, duration: 0.5 }}
+          transition={{ delay: 0.4, duration: 0.5 }}
         >
           <AttendanceWidget />
         </motion.div>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4, duration: 0.5 }}
+          transition={{ delay: 0.5, duration: 0.5 }}
         >
           <PocketBuddyWidget />
         </motion.div>
@@ -172,7 +192,7 @@ export function DashboardGrid() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4, duration: 0.5 }}
+        transition={{ delay: 0.6, duration: 0.5 }}
       >
         <CampusRadar />
       </motion.div>
