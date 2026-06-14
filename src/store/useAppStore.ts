@@ -1,11 +1,12 @@
 import { create } from 'zustand';
-import type { Task, Notice, ChatMessage, Document, ClassSession, Profile, ExtractedClass, DayOfWeek } from '@/types';
+import type { Task, Notice, ChatMessage, Document, ClassSession, Profile, ExtractedClass, DayOfWeek, AttendanceLog } from '@/types';
 import { createClient } from '@/utils/supabase/client';
 import { colorForClass } from '@/lib/utils';
 
 interface AppState {
   profile: Profile | null;
   classes: ClassSession[];
+  attendanceLogs: AttendanceLog[];
   tasks: Task[];
   notices: Notice[];
   messages: ChatMessage[];
@@ -19,6 +20,8 @@ interface AppState {
   markNoticeRead: (id: string) => Promise<void>;
   addTask: (task: Partial<Task>) => Promise<void>;
   addClass: (cls: Partial<ClassSession>) => Promise<void>;
+  updateClass: (id: string, updates: Partial<ClassSession>) => Promise<void>;
+  deleteClass: (id: string) => Promise<void>;
   addBulkClasses: (classes: ExtractedClass[]) => Promise<void>;
   addMessage: (msg: ChatMessage) => void;
   addDocument: (doc: Partial<Document>) => Promise<string | undefined>;
@@ -28,11 +31,13 @@ interface AppState {
   updateProfile: (updates: Partial<Profile>) => Promise<void>;
   setIsChatOpen: (open: boolean) => void;
   setActiveNavItem: (item: string) => void;
+  markAttendance: (classId: string, date: string, status: 'Present' | 'Absent' | 'Cancelled') => Promise<void>;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
   profile: null,
   classes: [],
+  attendanceLogs: [],
   tasks: [],
   notices: [],
   messages: [],
@@ -80,22 +85,44 @@ export const useAppStore = create<AppState>((set, get) => ({
       .eq('user_id', user.id)
       .order('uploaded_at', { ascending: false });
 
-    const mappedClasses: ClassSession[] = (classesData || []).map((c) => ({
-      id: c.id,
-      title: c.title,
-      shortCode: c.short_code || c.title.slice(0, 4).toUpperCase(),
-      type: c.type,
-      dayOfWeek: (c.day_of_week || 'Monday') as DayOfWeek,
-      room: c.room || 'TBD',
-      instructor: c.instructor || 'TBD',
-      time: `${c.start_hour}:${c.start_minute.toString().padStart(2, '0')} - ${c.end_hour}:${c.end_minute.toString().padStart(2, '0')}`,
-      startHour: c.start_hour,
-      startMinute: c.start_minute,
-      endHour: c.end_hour,
-      endMinute: c.end_minute,
-      attendancePercentage: c.attendance_percentage ?? 100,
-      color: c.color || colorForClass(c.short_code || c.title),
+    const { data: attendanceData } = await supabase
+      .from('attendance_logs')
+      .select('*')
+      .eq('user_id', user.id);
+
+    const mappedAttendance: AttendanceLog[] = (attendanceData || []).map((a) => ({
+      id: a.id,
+      classId: a.class_id,
+      date: a.date,
+      status: a.status as AttendanceLog['status']
     }));
+
+    const mappedClasses: ClassSession[] = (classesData || []).map((c) => {
+      // Dynamically calculate attendance percentage
+      const logsForClass = mappedAttendance.filter(a => a.classId === c.id && a.status !== 'Cancelled');
+      let calculatedPercentage = c.attendance_percentage ?? 100;
+      if (logsForClass.length > 0) {
+        const presentCount = logsForClass.filter(a => a.status === 'Present').length;
+        calculatedPercentage = Math.round((presentCount / logsForClass.length) * 100);
+      }
+
+      return {
+        id: c.id,
+        title: c.title,
+        shortCode: c.short_code || c.title.slice(0, 4).toUpperCase(),
+        type: c.type,
+        dayOfWeek: (c.day_of_week || 'Monday') as DayOfWeek,
+        room: c.room || 'TBD',
+        instructor: c.instructor || 'TBD',
+        time: `${c.start_hour}:${c.start_minute.toString().padStart(2, '0')} - ${c.end_hour}:${c.end_minute.toString().padStart(2, '0')}`,
+        startHour: c.start_hour,
+        startMinute: c.start_minute,
+        endHour: c.end_hour,
+        endMinute: c.end_minute,
+        attendancePercentage: calculatedPercentage,
+        color: c.color || colorForClass(c.short_code || c.title),
+      };
+    });
 
     const mappedTasks: Task[] = (tasksData || []).map((t) => {
       const dueDate = new Date(t.due_date);
@@ -159,6 +186,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         hostelRoom: 'TBD',
       },
       classes: mappedClasses,
+      attendanceLogs: mappedAttendance,
       tasks: mappedTasks,
       notices: mappedNotices,
       documents: mappedDocuments,
@@ -289,6 +317,55 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     set((state) => ({
       classes: [...state.classes, newClass].sort((a, b) => a.startHour - b.startHour),
+    }));
+  },
+
+  updateClass: async (id, updates) => {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const dbUpdates: any = {};
+    if (updates.title !== undefined) dbUpdates.title = updates.title;
+    if (updates.shortCode !== undefined) dbUpdates.short_code = updates.shortCode;
+    if (updates.type !== undefined) dbUpdates.type = updates.type;
+    if (updates.room !== undefined) dbUpdates.room = updates.room;
+    if (updates.instructor !== undefined) dbUpdates.instructor = updates.instructor;
+    if (updates.dayOfWeek !== undefined) dbUpdates.day_of_week = updates.dayOfWeek;
+    if (updates.startHour !== undefined) dbUpdates.start_hour = updates.startHour;
+    if (updates.startMinute !== undefined) dbUpdates.start_minute = updates.startMinute;
+    if (updates.endHour !== undefined) dbUpdates.end_hour = updates.endHour;
+    if (updates.endMinute !== undefined) dbUpdates.end_minute = updates.endMinute;
+
+    const { error } = await supabase
+      .from('classes')
+      .update(dbUpdates)
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error updating class:', error);
+      return;
+    }
+
+    set((state) => ({
+      classes: state.classes.map(c => c.id === id ? { ...c, ...updates, time: updates.startHour !== undefined ? `${updates.startHour}:${(updates.startMinute || 0).toString().padStart(2, '0')} - ${updates.endHour}:${(updates.endMinute || 0).toString().padStart(2, '0')}` : c.time } : c).sort((a, b) => a.startHour - b.startHour),
+    }));
+  },
+
+  deleteClass: async (id) => {
+    const supabase = createClient();
+    const { error } = await supabase
+      .from('classes')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error deleting class:', error);
+      return;
+    }
+
+    set((state) => ({
+      classes: state.classes.filter(c => c.id !== id),
     }));
   },
 
@@ -468,4 +545,56 @@ export const useAppStore = create<AppState>((set, get) => ({
   setIsChatOpen: (open) => set({ isChatOpen: open }),
 
   setActiveNavItem: (item) => set({ activeNavItem: item }),
+
+  markAttendance: async (classId, date, status) => {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // Optimistically update the local state
+    set((state) => {
+      // 1. Update or add the attendance log
+      let newLogs = [...state.attendanceLogs];
+      const existingLogIndex = newLogs.findIndex(l => l.classId === classId && l.date === date);
+      
+      if (existingLogIndex >= 0) {
+        newLogs[existingLogIndex] = { ...newLogs[existingLogIndex], status };
+      } else {
+        newLogs.push({ id: 'temp-' + Date.now(), classId, date, status });
+      }
+
+      // 2. Recalculate percentage for this class
+      const logsForClass = newLogs.filter(a => a.classId === classId && a.status !== 'Cancelled');
+      let newPercentage = 100;
+      if (logsForClass.length > 0) {
+        const presentCount = logsForClass.filter(a => a.status === 'Present').length;
+        newPercentage = Math.round((presentCount / logsForClass.length) * 100);
+      }
+
+      // 3. Update the class in the state
+      const newClasses = state.classes.map(c => 
+        c.id === classId ? { ...c, attendancePercentage: newPercentage } : c
+      );
+
+      return {
+        attendanceLogs: newLogs,
+        classes: newClasses
+      };
+    });
+
+    // Send to database (Upsert)
+    const { error } = await supabase
+      .from('attendance_logs')
+      .upsert({
+        user_id: user.id,
+        class_id: classId,
+        date: date,
+        status: status
+      }, { onConflict: 'class_id,date' });
+
+    if (error) {
+      console.error("Failed to mark attendance", error);
+      // We could revert optimistic update here, but for now we just log it
+    }
+  },
 }));

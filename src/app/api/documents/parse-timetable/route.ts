@@ -4,7 +4,7 @@ import { createAdminClient } from '@/utils/supabase/admin';
 import { extractTextFromFile } from '@/lib/textExtraction';
 import { DAYS_OF_WEEK } from '@/types';
 
-const TIMETABLE_MODEL = process.env.TIMETABLE_LLM_MODEL || 'anthropic/claude-3-haiku-20240307';
+const TIMETABLE_MODEL = process.env.TIMETABLE_LLM_MODEL || 'anthropic/claude-3-haiku';
 
 const ExtractedClassSchema = z.object({
   title: z.string().min(1).max(120),
@@ -103,9 +103,19 @@ export async function POST(req: NextRequest) {
     
     // Attempt to parse JSON safely
     try {
-      // Strip markdown code blocks if LLM included them
-      content = content.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-      const parsed = JSON.parse(content);
+      let jsonContent = content;
+      const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (jsonMatch) {
+        jsonContent = jsonMatch[1];
+      } else {
+        const firstBrace = content.indexOf('{');
+        const lastBrace = content.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace !== -1) {
+          jsonContent = content.slice(firstBrace, lastBrace + 1);
+        }
+      }
+
+      const parsed = JSON.parse(jsonContent);
       const validated = ExtractionResultSchema.parse(parsed);
       
       // Merge with text extraction warnings
@@ -114,7 +124,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(validated);
     } catch (e: any) {
       console.error('JSON Parsing or Validation Error:', e);
-      return NextResponse.json({ error: 'AI returned malformed data', details: e.message }, { status: 422 });
+      console.error('Raw AI Content was:', content);
+      return NextResponse.json({ error: 'AI returned malformed data', details: e.message, raw: content }, { status: 422 });
     }
 
   } catch (error: any) {

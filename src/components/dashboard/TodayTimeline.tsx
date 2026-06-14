@@ -12,8 +12,11 @@ import { isCurrentClass, isPastClass, getTodayName } from '@/lib/utils';
 export function TodayTimeline() {
   const [, setTick] = useState(0);
   const allClasses = useAppStore((s) => s.classes);
+  const attendanceLogs = useAppStore((s) => s.attendanceLogs || []);
+  const markAttendance = useAppStore((s) => s.markAttendance);
   const todayName = getTodayName();
   const classes = allClasses.filter((c) => c.dayOfWeek === todayName);
+  const todayDateString = new Date().toISOString().split('T')[0];
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -41,6 +44,7 @@ export function TodayTimeline() {
             {classes.map((cls, index) => {
               const isCurrent = isCurrentClass(cls.startHour, cls.startMinute, cls.endHour, cls.endMinute);
               const isPast = isPastClass(cls.endHour, cls.endMinute);
+              const log = attendanceLogs.find(l => l.classId === cls.id && l.date === todayDateString);
 
               return (
                 <motion.div
@@ -131,6 +135,32 @@ export function TodayTimeline() {
                           {cls.attendancePercentage}% attendance
                         </span>
                       </div>
+                      
+                      {/* Attendance Actions */}
+                      {(isPast || isCurrent) && (
+                        <div className="mt-3 flex items-center gap-2">
+                          {log ? (
+                            <Badge variant={log.status === 'Present' ? 'success' : 'destructive'} className="text-[10px]">
+                              Marked {log.status}
+                            </Badge>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => markAttendance(cls.id, todayDateString, 'Present')}
+                                className="text-[10px] font-medium px-2 py-1 rounded bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                              >
+                                ✅ Present
+                              </button>
+                              <button
+                                onClick={() => markAttendance(cls.id, todayDateString, 'Absent')}
+                                className="text-[10px] font-medium px-2 py-1 rounded bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-colors"
+                              >
+                                ❌ Absent
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </motion.div>

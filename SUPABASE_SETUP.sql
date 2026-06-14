@@ -169,7 +169,6 @@ RETURNS TABLE (
   id            uuid,
   document_id   uuid,
   content       text,
-  chunk_index   int,
   similarity    float
 )
 LANGUAGE plpgsql
@@ -182,7 +181,6 @@ BEGIN
     dc.id,
     dc.document_id,
     dc.content,
-    dc.chunk_index,
     (1 - (dc.embedding <=> query_embedding))::float AS similarity
   FROM public.document_chunks dc
   INNER JOIN public.documents d ON d.id = dc.document_id
@@ -191,6 +189,69 @@ BEGIN
     AND d.is_indexed = true         -- only fully indexed docs
     AND (1 - (dc.embedding <=> query_embedding)) > match_threshold
   ORDER BY dc.embedding <=> query_embedding  -- ascending = most similar first
+  LIMIT match_count;
+END;
+$$;
+
+-- ============================================================
+-- STEP 5B: HYBRID_DOCUMENT_SEARCH FUNCTION (RRF)
+-- Combines Vector Similarity with Postgres Full-Text Search
+-- using Reciprocal Rank Fusion for maximum accuracy.
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.hybrid_document_search(
+  query_text       text,
+  query_embedding  vector(1536),
+  match_count      int,
+  p_user_id        uuid
+)
+RETURNS TABLE (
+  id            uuid,
+  document_id   uuid,
+  content       text,
+  similarity    float
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN QUERY
+  WITH vector_search AS (
+    SELECT
+      dc.id,
+      dc.document_id,
+      dc.content,
+      RANK() OVER (ORDER BY dc.embedding <=> query_embedding) AS vector_rank
+    FROM public.document_chunks dc
+    INNER JOIN public.documents d ON d.id = dc.document_id
+    WHERE d.user_id = p_user_id AND d.is_indexed = true
+    ORDER BY dc.embedding <=> query_embedding
+    LIMIT match_count * 2
+  ),
+  fts_search AS (
+    SELECT
+      dc.id,
+      dc.document_id,
+      dc.content,
+      RANK() OVER (ORDER BY ts_rank(to_tsvector('english', dc.content), websearch_to_tsquery('english', query_text)) DESC) AS fts_rank
+    FROM public.document_chunks dc
+    INNER JOIN public.documents d ON d.id = dc.document_id
+    WHERE d.user_id = p_user_id AND d.is_indexed = true
+      AND to_tsvector('english', dc.content) @@ websearch_to_tsquery('english', query_text)
+    ORDER BY ts_rank(to_tsvector('english', dc.content), websearch_to_tsquery('english', query_text)) DESC
+    LIMIT match_count * 2
+  )
+  SELECT
+    COALESCE(vs.id, fs.id) AS id,
+    COALESCE(vs.document_id, fs.document_id) AS document_id,
+    COALESCE(vs.content, fs.content) AS content,
+    (
+      COALESCE(1.0 / (60 + vs.vector_rank), 0.0) +
+      COALESCE(1.0 / (60 + fs.fts_rank), 0.0)
+    )::float AS similarity
+  FROM vector_search vs
+  FULL OUTER JOIN fts_search fs ON vs.id = fs.id
+  ORDER BY similarity DESC
   LIMIT match_count;
 END;
 $$;

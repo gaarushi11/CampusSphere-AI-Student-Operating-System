@@ -1,5 +1,7 @@
 // src/lib/textExtraction.ts
 // SERVER-SIDE ONLY — shared text extraction for PDF, DOCX, PPTX
+import { execSync } from 'child_process';
+import path from 'path';
 
 export interface ExtractedDocument {
   text: string;
@@ -23,33 +25,32 @@ export async function extractTextFromFile(buffer: Buffer, fileExt: string): Prom
 }
 
 async function extractFromPdf(buffer: Buffer, warnings: string[]): Promise<ExtractedDocument> {
-  return new Promise((resolve, reject) => {
-    try {
-      import('pdf2json').then((PDFParserModule) => {
-        const PDFParser = PDFParserModule.default || PDFParserModule;
-        const pdfParser = new PDFParser(null, 1);
+  try {
+    const workerPath = path.join(process.cwd(), 'src', 'lib', 'pdf-worker.js');
+    const stdout = execSync(`node "${workerPath}"`, {
+      input: buffer,
+      maxBuffer: 50 * 1024 * 1024, // 50MB
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
 
-        pdfParser.on('pdfParser_dataError', (errData: any) => {
-          reject(new Error(`PDF parsing failed: ${errData.parserError}`));
-        });
-
-        pdfParser.on('pdfParser_dataReady', () => {
-          const text = pdfParser.getRawTextContent();
-          if (!text || text.trim().length < MIN_TEXT_LENGTH) {
-            warnings.push('Very little text was extracted. This PDF may be a scanned image without an OCR text layer.');
-          }
-          // pdf2json doesn't give an easy page count in raw text mode, so we estimate based on text length
-          const estimatedPages = Math.max(1, Math.round(text.split(/\s+/).length / 400));
-          resolve({ text, pageCount: estimatedPages, warnings });
-        });
-
-        pdfParser.parseBuffer(buffer);
-      }).catch(reject);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      reject(new Error(`PDF parsing failed: ${message}`));
+    const output = stdout.toString('utf-8');
+    const match = output.match(/===RESULT_START===\n([\s\S]*?)\n===RESULT_END===/);
+    if (!match) {
+      throw new Error("Worker did not return valid JSON tags. Output was: " + output);
     }
-  });
+
+    const data = JSON.parse(match[1]);
+    const text = data.text;
+    
+    if (!text || text.trim().length < MIN_TEXT_LENGTH) {
+      warnings.push('Very little text was extracted. This PDF may be a scanned image without an OCR text layer.');
+    }
+    
+    return { text, pageCount: data.pageCount || 1, warnings };
+  } catch (err: any) {
+    const message = err.stderr ? err.stderr.toString('utf-8') : err.message;
+    throw new Error(`PDF parsing failed: ${message}`);
+  }
 }
 
 async function extractFromDocx(buffer: Buffer, warnings: string[]): Promise<ExtractedDocument> {

@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion';
 import {
-  Clock, MapPin, User as UserIcon, BookOpen, FlaskConical, GraduationCap,
+  Clock, MapPin, User as UserIcon, BookOpen, FlaskConical, GraduationCap, Trash2, Edit2
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -19,18 +19,18 @@ const typeIcons: Record<string, typeof BookOpen> = {
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Sparkles } from 'lucide-react';
-import { TimetablePreviewModal } from '@/components/vault/TimetablePreviewModal';
-
+import { Plus } from 'lucide-react';
 export default function SchedulePage() {
   const allClasses = useAppStore((s) => s.classes);
   const fetchData = useAppStore((s) => s.fetchData);
   const addClass = useAppStore((s) => s.addClass);
+  const updateClass = useAppStore((s) => s.updateClass);
+  const deleteClass = useAppStore((s) => s.deleteClass);
   const isLoading = useAppStore((s) => s.isLoading);
 
   const [selectedDay, setSelectedDay] = useState<DayOfWeek>(getTodayName());
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isAIModalOpen, setIsAIModalOpen] = useState(false);
+  const [editingClassId, setEditingClassId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
@@ -44,6 +44,50 @@ export default function SchedulePage() {
     endHour: 10,
     endMinute: 0,
   });
+
+  const handleAddClass = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    
+    if (editingClassId) {
+      await updateClass(editingClassId, formData);
+    } else {
+      await addClass(formData as any);
+    }
+    
+    setIsSubmitting(false);
+    setEditingClassId(null);
+    setIsModalOpen(false);
+    setFormData({
+      title: '',
+      shortCode: '',
+      room: '',
+      instructor: '',
+      type: 'Lecture',
+      dayOfWeek: getTodayName() as string,
+      startHour: 9,
+      startMinute: 0,
+      endHour: 10,
+      endMinute: 0,
+    });
+  };
+
+  const openEditModal = (cls: any) => {
+    setFormData({
+      title: cls.title,
+      shortCode: cls.shortCode,
+      room: cls.room,
+      instructor: cls.instructor,
+      type: cls.type,
+      dayOfWeek: cls.dayOfWeek,
+      startHour: cls.startHour,
+      startMinute: cls.startMinute,
+      endHour: cls.endHour,
+      endMinute: cls.endMinute,
+    });
+    setEditingClassId(cls.id);
+    setIsModalOpen(true);
+  };
 
   const classes = allClasses.filter((c) => c.dayOfWeek === selectedDay);
 
@@ -59,14 +103,6 @@ export default function SchedulePage() {
     );
   }
 
-  const handleAddClass = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    await addClass(formData as any);
-    setIsSubmitting(false);
-    setIsModalOpen(false);
-  };
-
   return (
     <div className="space-y-6 relative">
       {/* Header */}
@@ -80,33 +116,16 @@ export default function SchedulePage() {
             Your complete class schedule for the week. Today&apos;s classes are highlighted.
           </p>
         </div>
-        <div className="flex gap-3 w-full md:w-auto">
-          <Button
-            onClick={() => setIsAIModalOpen(true)}
-            variant="outline"
-            className="flex-1 md:flex-none border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10"
-          >
-            <Sparkles className="w-4 h-4 mr-2" /> AI Import
-          </Button>
-          <Button
-            onClick={() => setIsModalOpen(true)}
-            className="flex-1 md:flex-none bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-semibold"
-          >
-            <Plus className="w-4 h-4 mr-2" /> Add Class
-          </Button>
-        </div>
-      </div>
-
-      {/* Add Class Modal */}
-      {isAIModalOpen && (
-        <TimetablePreviewModal
-          onClose={() => setIsAIModalOpen(false)}
-          onSuccess={() => {
-            setIsAIModalOpen(false);
-            fetchData();
+        <Button
+          onClick={() => {
+            setEditingClassId(null);
+            setIsModalOpen(true);
           }}
-        />
-      )}
+          className="bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/30 w-full md:w-auto"
+        >
+          <Plus className="w-4 h-4 mr-2" /> Add Class
+        </Button>
+      </div>
 
       {/* Manual Add Class Modal */}
       {isModalOpen && (
@@ -114,10 +133,15 @@ export default function SchedulePage() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-slate-900 border border-slate-800 rounded-xl p-6 w-full max-w-md shadow-2xl shadow-cyan-500/10"
+            className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden"
           >
-            <h3 className="text-lg font-bold text-slate-100 mb-4">Add New Class</h3>
-            <form onSubmit={handleAddClass} className="space-y-4">
+            <div className="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
+              <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-cyan-400" />
+                {editingClassId ? 'Edit Class' : 'Add New Class'}
+              </h2>
+            </div>
+            <form onSubmit={handleAddClass} className="p-5 space-y-4">
               <div>
                 <label className="text-xs font-medium text-slate-400 mb-1 block">Course Title</label>
                 <Input
@@ -224,11 +248,14 @@ export default function SchedulePage() {
               </div>
               
               <div className="flex gap-3 justify-end mt-6">
-                <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>
+                <Button type="button" variant="ghost" onClick={() => {
+                  setIsModalOpen(false);
+                  setEditingClassId(null);
+                }}>
                   Cancel
                 </Button>
                 <Button type="submit" disabled={isSubmitting} className="bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-semibold">
-                  {isSubmitting ? 'Saving...' : 'Save Class'}
+                  {isSubmitting ? 'Saving...' : (editingClassId ? 'Save Changes' : 'Save Class')}
                 </Button>
               </div>
             </form>
@@ -271,9 +298,23 @@ export default function SchedulePage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.1, duration: 0.4 }}
             >
-              <Card className="hover:border-slate-700 transition-all group">
+              <Card className="hover:border-slate-700 transition-all group relative">
+                <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                  <button 
+                    onClick={() => openEditModal(cls)}
+                    className="p-1.5 rounded-md hover:bg-slate-800 text-slate-400 hover:text-cyan-400 transition-colors"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  <button 
+                    onClick={() => deleteClass(cls.id)}
+                    className="p-1.5 rounded-md hover:bg-slate-800 text-slate-400 hover:text-rose-400 transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
                 <CardContent className="p-4 md:p-5">
-                  <div className="flex flex-col md:flex-row md:items-center gap-4">
+                  <div className="flex flex-col md:flex-row md:items-center gap-4 pr-16">
                     {/* Time block */}
                     <div className="flex items-center gap-3 md:w-48 flex-shrink-0">
                       <div className={cn('w-1.5 h-12 rounded-full', cls.color)} />

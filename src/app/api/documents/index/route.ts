@@ -39,6 +39,10 @@ function createChunks(text: string): string[] {
     const chunk = cleaned.slice(start, chunkEnd).trim();
     if (chunk.length >= MIN_CHUNK_LENGTH) chunks.push(chunk);
 
+    if (end === cleaned.length) {
+      break;
+    }
+
     start = chunkEnd - CHUNK_OVERLAP;
     if (start >= chunkEnd) start = chunkEnd;
   }
@@ -75,6 +79,8 @@ async function setIndexError(supabase: AdminClient, documentId: string, message:
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
 
+  let documentIdToUpdate: string | null = null;
+  
   try {
     const body = await req.json();
     const { documentId, filePath, userId } = body as { documentId: string; filePath: string; userId: string };
@@ -82,6 +88,8 @@ export async function POST(req: NextRequest) {
     if (!documentId || !filePath || !userId) {
       return NextResponse.json({ error: 'Missing required fields: documentId, filePath, userId' }, { status: 400 });
     }
+    
+    documentIdToUpdate = documentId;
 
     const supabase = createAdminClient();
 
@@ -182,7 +190,6 @@ export async function POST(req: NextRequest) {
           const { error: insertError } = await supabase.from('document_chunks').insert({
             document_id: documentId,
             content: chunk,
-            chunk_index: chunkIndex,
             embedding,
           });
 
@@ -231,13 +238,10 @@ export async function POST(req: NextRequest) {
     const message = error instanceof Error ? error.message : 'Unknown indexing error';
     console.error('[Index] Fatal error:', message);
 
-    try {
-      const body = await req.clone().json();
-      if (body?.documentId) {
-        const supabase = createAdminClient();
-        await setIndexError(supabase, body.documentId, message);
-      }
-    } catch { /* ignore */ }
+    if (documentIdToUpdate) {
+      const supabase = createAdminClient();
+      await setIndexError(supabase, documentIdToUpdate, message);
+    }
 
     return NextResponse.json({ error: message }, { status: 500 });
   }

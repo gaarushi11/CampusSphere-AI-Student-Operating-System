@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Upload, FileText, FileSpreadsheet, FileImage,
@@ -35,9 +35,14 @@ export function KnowledgeVault() {
   const removeDocument = useAppStore((s) => s.removeDocument);
   const markDocumentIndexed = useAppStore((s) => s.markDocumentIndexed);
   const markDocumentError = useAppStore((s) => s.markDocumentError);
+  const fetchData = useAppStore((s) => s.fetchData);
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const filteredDocs = documents.filter(
     (doc) =>
@@ -127,15 +132,55 @@ export function KnowledgeVault() {
     [addDocument, markDocumentIndexed, markDocumentError]
   );
 
+  const handleRetryIndexing = async (doc: Document) => {
+    if (!doc.filePath) {
+      alert('Cannot retry: File path is missing.');
+      return;
+    }
+    markDocumentError(doc.id, ''); // Clears error to show spinner
+
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    fetch('/api/documents/index', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        documentId: doc.id,
+        filePath: doc.filePath,
+        userId: user.id,
+      })
+    }).then(async res => {
+      const data = await res.json();
+      if (!res.ok) {
+        markDocumentError(doc.id, data.error || 'Unknown indexing error');
+      } else {
+        markDocumentIndexed(doc.id);
+      }
+    }).catch(err => {
+      console.error(err);
+      markDocumentError(doc.id, 'Network error — check if the server is running.');
+    });
+  };
+
   const renderDocStatus = (doc: Document) => {
     if (doc.indexError) {
       return (
-        <Badge className="text-[9px] py-0 px-1.5 bg-rose-500/15 text-rose-400 border-rose-500/30 gap-0.5 cursor-help max-w-[160px] truncate"
-          title={doc.indexError}
-        >
-          <XCircle className="w-2.5 h-2.5 flex-shrink-0" />
-          Failed
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge className="text-[9px] py-0 px-1.5 bg-rose-500/15 text-rose-400 border-rose-500/30 gap-0.5 cursor-help max-w-[160px] truncate"
+            title={doc.indexError}
+          >
+            <XCircle className="w-2.5 h-2.5 flex-shrink-0" />
+            Failed
+          </Badge>
+          <button 
+            onClick={(e) => { e.stopPropagation(); handleRetryIndexing(doc); }}
+            className="text-[10px] text-slate-400 hover:text-cyan-400 underline underline-offset-2"
+          >
+            Retry
+          </button>
+        </div>
       );
     }
     if (doc.isIndexed) {

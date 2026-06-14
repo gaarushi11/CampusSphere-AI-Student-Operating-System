@@ -18,6 +18,20 @@ export const DAYS_OF_WEEK = [
 
 export type DayOfWeek = (typeof DAYS_OF_WEEK)[number];
 
+export interface DocumentChunk {
+  id: string;
+  documentId: string;
+  content: string;
+  chunkIndex: number;
+}
+
+export interface AttendanceLog {
+  id: string;
+  classId: string;
+  date: string; // YYYY-MM-DD
+  status: 'Present' | 'Absent' | 'Cancelled';
+}
+
 export interface Profile {
   id: string;
   name: string;

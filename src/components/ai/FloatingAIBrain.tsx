@@ -2,9 +2,10 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Brain, X, Send, Sparkles, BotMessageSquare } from 'lucide-react';
+import { Brain, X, Send, Sparkles, BotMessageSquare, Paperclip, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/store/useAppStore';
+import { createClient } from '@/utils/supabase/client';
 import type { ChatMessage } from '@/types';
 import { cn } from '@/lib/utils';
 
@@ -79,11 +80,16 @@ export function FloatingAIBrain() {
   const setIsChatOpen = useAppStore((s) => s.setIsChatOpen);
   const messages = useAppStore((s) => s.messages);
   const addMessage = useAppStore((s) => s.addMessage);
+  const addDocument = useAppStore((s) => s.addDocument);
+  const markDocumentIndexed = useAppStore((s) => s.markDocumentIndexed);
+  const markDocumentError = useAppStore((s) => s.markDocumentError);
 
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [isUploadingContext, setIsUploadingContext] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -160,6 +166,95 @@ export function FloatingAIBrain() {
       e.preventDefault();
       sendMessage(inputValue);
     }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingContext(true);
+    
+    addMessage({
+      id: `msg-${Date.now()}-upload`,
+      role: 'assistant',
+      content: `Uploading and indexing **${file.name}**...`,
+      timestamp: new Date(),
+    });
+
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      setIsUploadingContext(false);
+      return;
+    }
+
+    const ext = file.name.split('.').pop()?.toUpperCase() as 'PDF' | 'PPTX' | 'DOCX';
+    const fileType = ext === 'PDF' || ext === 'PPTX' || ext === 'DOCX' ? ext : 'PDF';
+    const fileSizeStr = `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
+    
+    const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    const filePath = `${user.id}/${Date.now()}_${safeName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('vault_files')
+      .upload(filePath, file);
+
+    if (uploadError) {
+      setIsUploadingContext(false);
+      addMessage({
+        id: `msg-${Date.now()}-err`,
+        role: 'assistant',
+        content: `❌ Failed to upload **${file.name}**.`,
+        timestamp: new Date(),
+      });
+      return;
+    }
+
+    const documentId = await addDocument({
+      name: file.name,
+      type: fileType,
+      category: 'Other',
+      size: fileSizeStr,
+      subject: 'Uploaded via Chat',
+      isIndexed: false,
+      pageCount: 1,
+    });
+
+    if (!documentId) {
+      setIsUploadingContext(false);
+      return;
+    }
+
+    // Trigger background indexing
+    fetch('/api/documents/index', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ documentId, filePath, userId: user.id })
+    }).then(async res => {
+      if (!res.ok) {
+        markDocumentError(documentId, 'Indexing failed in chat');
+        addMessage({
+          id: `msg-${Date.now()}-err2`,
+          role: 'assistant',
+          content: `❌ Failed to index **${file.name}**. I won't be able to answer questions about it.`,
+          timestamp: new Date(),
+        });
+      } else {
+        markDocumentIndexed(documentId);
+        addMessage({
+          id: `msg-${Date.now()}-success`,
+          role: 'assistant',
+          content: `✅ Successfully indexed **${file.name}**! You can now ask me questions about it.`,
+          timestamp: new Date(),
+        });
+      }
+    }).catch(() => {
+       markDocumentError(documentId, 'Network error');
+    }).finally(() => {
+       setIsUploadingContext(false);
+       if (fileInputRef.current) fileInputRef.current.value = '';
+    });
   };
 
   return (
@@ -296,6 +391,23 @@ export function FloatingAIBrain() {
             {/* Input */}
             <div className="px-3 py-3 border-t border-slate-700/50 bg-slate-900/50">
               <div className="flex items-center gap-2">
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  className="hidden" 
+                  accept=".pdf,.docx,.pptx"
+                  onChange={handleFileUpload}
+                />
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-10 w-10 text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/10 flex-shrink-0"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isTyping || isUploadingContext}
+                  title="Upload PDF to Chat"
+                >
+                  {isUploadingContext ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
+                </Button>
                 <input
                   ref={inputRef}
                   type="text"
@@ -303,7 +415,7 @@ export function FloatingAIBrain() {
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="Ask CampusFlow AI..."
-                  className="flex-1 bg-slate-800/60 border border-slate-700/50 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all"
+                  className="flex-1 bg-slate-800/60 border border-slate-700/50 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all min-w-0"
                   disabled={isTyping}
                 />
                 <Button
