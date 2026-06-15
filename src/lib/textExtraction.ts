@@ -28,7 +28,7 @@ async function extractFromPdf(buffer: Buffer, warnings: string[]): Promise<Extra
   return new Promise(async (resolve, reject) => {
     try {
       const PDFParser = (await import('pdf2json')).default;
-      const pdfParser = new PDFParser(null, 1);
+      const pdfParser = new PDFParser(null, true);
       
       pdfParser.on("pdfParser_dataError", (errData: any) => reject(new Error(errData.parserError)));
       pdfParser.on("pdfParser_dataReady", (pdfData: any) => {
