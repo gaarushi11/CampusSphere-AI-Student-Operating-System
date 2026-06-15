@@ -81,6 +81,22 @@ export default function LoginPage({
           </div>
         </CardContent>
       </Card>
+
+      {/* Feature Highlights */}
+      <div className="relative z-10 mt-6 grid grid-cols-3 gap-3">
+        <div className="text-center p-3 rounded-lg bg-slate-900/50 border border-slate-800/50">
+          <p className="text-lg font-bold text-cyan-400">📅</p>
+          <p className="text-[10px] text-slate-400 mt-1">Smart Schedule</p>
+        </div>
+        <div className="text-center p-3 rounded-lg bg-slate-900/50 border border-slate-800/50">
+          <p className="text-lg font-bold text-cyan-400">🧠</p>
+          <p className="text-[10px] text-slate-400 mt-1">AI Assistant</p>
+        </div>
+        <div className="text-center p-3 rounded-lg bg-slate-900/50 border border-slate-800/50">
+          <p className="text-lg font-bold text-cyan-400">💰</p>
+          <p className="text-[10px] text-slate-400 mt-1">Budget Tracker</p>
+        </div>
+      </div>
     </div>
   );
 }

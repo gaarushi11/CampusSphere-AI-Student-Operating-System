@@ -42,8 +42,12 @@ export function Header() {
       </div>
       <div className="flex items-center gap-2">
         {/* Search */}
-        <button className="p-2 rounded-lg hover:bg-slate-800 transition-colors" aria-label="Search">
-          <Search className="w-4 h-4 text-slate-400" />
+        <button 
+          className="p-2 rounded-lg hover:bg-slate-800 transition-colors" 
+          aria-label="Search"
+          onClick={() => useAppStore.getState().setIsChatOpen(true)}
+          title="Search with AI"
+        >          <Search className="w-4 h-4 text-slate-400" />
         </button>
         {/* Notification Bell */}
         <button className="relative p-2 rounded-lg hover:bg-slate-800 transition-colors" aria-label="Notifications">

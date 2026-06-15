@@ -46,7 +46,15 @@ export function AttendanceWidget() {
           {/* Per-subject breakdown */}
           <div className="w-full space-y-4">
             {attendanceStats.length === 0 && (
-               <p className="text-xs text-slate-500 text-center py-4">No classes found</p>
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center mb-3">
+                  <div className="w-5 h-5 rounded-full border-2 border-slate-600 flex items-center justify-center">
+                    <div className="w-2 h-2 rounded-full bg-slate-600" />
+                  </div>
+                </div>
+                <p className="text-sm text-slate-400 font-medium">No classes tracked yet</p>
+                <p className="text-xs text-slate-600 mt-1 max-w-[220px]">Add classes in the Schedule page, then mark attendance from your daily timeline.</p>
+              </div>
             )}
             {attendanceStats.map((stat, index) => {
               const needed = Math.max(0, Math.ceil((0.75 * stat.total - stat.attended) / 0.25));

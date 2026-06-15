@@ -39,7 +39,7 @@ export default function SignupPage({
                 id="fullName"
                 name="fullName"
                 type="text"
-                placeholder="Rahul Sharma"
+                placeholder="Your Full Name"
                 required
                 className="bg-slate-950/50 border-slate-800 focus:border-violet-500/50 focus:ring-violet-500/20"
               />

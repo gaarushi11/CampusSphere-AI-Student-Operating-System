@@ -90,12 +90,12 @@ export function MagicPaste() {
             <MessageCircle className="w-4 h-4 text-emerald-400" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-slate-200">WhatsApp Chaos Parser</h3>
-            <p className="text-[10px] text-slate-400">Paste messy group messages to auto-update schedule</p>
+            <h3 className="text-sm font-semibold text-slate-200">Smart Message Parser</h3>
+            <p className="text-[10px] text-slate-400">Paste group chat messages to auto-update your schedule & tasks</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[10px]">AWS Bedrock</Badge>
+          <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[10px]">AI Powered</Badge>
           <motion.div animate={{ rotate: isOpen ? 180 : 0 }}>
             <ArrowRight className="w-4 h-4 text-slate-500" />
           </motion.div>
@@ -114,7 +114,7 @@ export function MagicPaste() {
               <textarea
                 value={text}
                 onChange={e => setText(e.target.value)}
-                placeholder="Paste messy message here... e.g. 'Hey guys, CS101 is cancelled tmrw but assignment 3 is due Friday 5PM! Also tech club meeting at 6 in LHC.'"
+                placeholder="Paste a message here... e.g. 'Hey guys, CS101 is cancelled tmrw but assignment 3 is due Friday 5PM! Also club meeting at 6 in LHC.'"
                 className="w-full h-24 bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500/50 resize-none"
               />
               <div className="flex items-center justify-between">

@@ -15,7 +15,7 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: 'CampusFlow — AI Student OS',
   description:
-    'Your AI-powered Operating System for Student Life. Unified schedules, smart task management, RAG-powered campus assistant. Built for HackOn with Amazon 2026.',
+    'Your AI-powered Operating System for Student Life. Unified schedules, smart task management, financial wellness tracking, and a RAG-powered campus assistant.',
   icons: { icon: '/favicon.ico' },
 };
 

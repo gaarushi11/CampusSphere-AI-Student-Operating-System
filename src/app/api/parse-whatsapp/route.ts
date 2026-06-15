@@ -88,10 +88,10 @@ Rules:
 
     let answerStr = orData.choices[0].message.content.trim();
     // Clean up potential markdown formatting
-    if (answerStr.startsWith('\`\`\`json')) {
-      answerStr = answerStr.replace(/^\`\`\`json/, '').replace(/\`\`\`$/, '').trim();
-    } else if (answerStr.startsWith('\`\`\`')) {
-      answerStr = answerStr.replace(/^\`\`\`/, '').replace(/\`\`\`$/, '').trim();
+    if (answerStr.startsWith('```json')) {
+      answerStr = answerStr.replace(/^```json/, '').replace(/```$/, '').trim();
+    } else if (answerStr.startsWith('```')) {
+      answerStr = answerStr.replace(/^```/, '').replace(/```$/, '').trim();
     }
 
     try {

@@ -101,7 +101,16 @@ export function TaskPrioritizer() {
         </div>
         <ScrollArea className="h-[320px] px-6 pb-6">
           <div className="space-y-2 pr-2">
-            {sortedTasks.map((task, index) => {
+            {sortedTasks.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center mb-3">
+                  <Sparkles className="w-5 h-5 text-slate-600" />
+                </div>
+                <p className="text-sm text-slate-400 font-medium">No tasks yet</p>
+                <p className="text-xs text-slate-600 mt-1 max-w-[200px]">Add your first task above, or paste a WhatsApp message in the Smart Parser to auto-create tasks.</p>
+              </div>
+            ) : (
+            sortedTasks.map((task, index) => {
               const source = sourceConfig[task.source];
               const SourceIcon = source?.icon || PenLine;
               const isHighAndActive = task.priority === 'High' && !task.completed;
@@ -182,7 +191,8 @@ export function TaskPrioritizer() {
                   </div>
                 </motion.div>
               );
-            })}
+            })
+            )}
           </div>
         </ScrollArea>
       </CardContent>

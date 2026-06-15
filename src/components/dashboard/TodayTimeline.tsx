@@ -41,7 +41,16 @@ export function TodayTimeline() {
       <CardContent>
         <ScrollArea className="h-[380px] pr-3">
           <div className="space-y-0">
-            {classes.map((cls, index) => {
+            {classes.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <div className="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center mb-3">
+                  <Clock className="w-5 h-5 text-slate-600" />
+                </div>
+                <p className="text-sm text-slate-400 font-medium">No classes today</p>
+                <p className="text-xs text-slate-600 mt-1 max-w-[220px]">Head to the Schedule page to add your class timetable for the week.</p>
+              </div>
+            ) : (
+            classes.map((cls, index) => {
               const isCurrent = isCurrentClass(cls.startHour, cls.startMinute, cls.endHour, cls.endMinute);
               const isPast = isPastClass(cls.endHour, cls.endMinute);
               const log = attendanceLogs.find(l => l.classId === cls.id && l.date === todayDateString);
@@ -165,7 +174,7 @@ export function TodayTimeline() {
                   </div>
                 </motion.div>
               );
-            })}
+            }))}
           </div>
         </ScrollArea>
       </CardContent>
