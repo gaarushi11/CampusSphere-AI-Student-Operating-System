@@ -25,32 +25,27 @@ export async function extractTextFromFile(buffer: Buffer, fileExt: string): Prom
 }
 
 async function extractFromPdf(buffer: Buffer, warnings: string[]): Promise<ExtractedDocument> {
-  try {
-    const workerPath = path.join(process.cwd(), 'src', 'lib', 'pdf-worker.js');
-    const stdout = execSync(`node "${workerPath}"`, {
-      input: buffer,
-      maxBuffer: 50 * 1024 * 1024, // 50MB
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-
-    const output = stdout.toString('utf-8');
-    const match = output.match(/===RESULT_START===\n([\s\S]*?)\n===RESULT_END===/);
-    if (!match) {
-      throw new Error("Worker did not return valid JSON tags. Output was: " + output);
+  return new Promise(async (resolve, reject) => {
+    try {
+      const PDFParser = (await import('pdf2json')).default;
+      const pdfParser = new PDFParser(null, 1);
+      
+      pdfParser.on("pdfParser_dataError", (errData: any) => reject(new Error(errData.parserError)));
+      pdfParser.on("pdfParser_dataReady", (pdfData: any) => {
+        const text = pdfParser.getRawTextContent();
+        const pageCount = pdfData.Pages ? pdfData.Pages.length : 1;
+        
+        if (!text || text.trim().length < MIN_TEXT_LENGTH) {
+          warnings.push('Very little text was extracted. This PDF may be a scanned image without an OCR text layer.');
+        }
+        resolve({ text, pageCount, warnings });
+      });
+      
+      pdfParser.parseBuffer(buffer);
+    } catch (err: any) {
+      reject(new Error(`PDF parsing setup failed: ${err.message}`));
     }
-
-    const data = JSON.parse(match[1]);
-    const text = data.text;
-    
-    if (!text || text.trim().length < MIN_TEXT_LENGTH) {
-      warnings.push('Very little text was extracted. This PDF may be a scanned image without an OCR text layer.');
-    }
-    
-    return { text, pageCount: data.pageCount || 1, warnings };
-  } catch (err: any) {
-    const message = err.stderr ? err.stderr.toString('utf-8') : err.message;
-    throw new Error(`PDF parsing failed: ${message}`);
-  }
+  });
 }
 
 async function extractFromDocx(buffer: Buffer, warnings: string[]): Promise<ExtractedDocument> {
