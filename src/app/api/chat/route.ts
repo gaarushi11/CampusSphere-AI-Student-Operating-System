@@ -209,7 +209,7 @@ export async function POST(req: NextRequest) {
             }
           } else if (chunks && (chunks as ChunkResult[]).length > 0) {
             const typedChunks = chunks as ChunkResult[];
-            const uniqueDocIds = [...new Set(typedChunks.map((c) => c.document_id))];
+            const uniqueDocIds = Array.from(new Set(typedChunks.map((c) => c.document_id)));
             const { data: docRows } = await supabase
               .from('documents')
               .select('id, name, type')
