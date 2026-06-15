@@ -1,9 +1,9 @@
 import type {
-  User, ClassSession, Notice, Task, Document, AttendanceStat
+  Profile, ClassSession, Notice, Task, Document, AttendanceStat
 } from '@/types';
 
 // ── USER ──────────────────────────────────────────────────────
-export const mockUser: User = {
+export const mockUser: Profile = {
   id: 'usr-001',
   name: 'Rahul Sharma',
   rollNumber: '2021CSE0042',
