@@ -292,8 +292,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!user) return;
 
     const currentProfile = get().profile;
-    const currentSettings = currentProfile?.settings || {};
-    const readNotices = currentSettings.read_notices || [];
+    const currentSettings = (currentProfile?.settings as any) || {};
+    const readNotices = (currentSettings as any).read_notices || [];
     
     if (!readNotices.includes(id)) {
       const newSettings = {
