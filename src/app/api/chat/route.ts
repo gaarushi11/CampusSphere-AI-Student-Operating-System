@@ -198,7 +198,7 @@ export async function POST(req: NextRequest) {
 
             if (bestChunks.length > 0) {
               contextText = bestChunks.map((c, i) => `[Excerpt ${i + 1} from Document: ${docMap[c.document_id]?.name || 'Unknown'} | relevance: ${(c.similarity * 100).toFixed(0)}%]\n${c.content}`).join('\n\n---\n\n');
-              const uniqueDocIds = [...new Set(bestChunks.map(c => c.document_id))];
+              const uniqueDocIds = Array.from(new Set(bestChunks.map(c => c.document_id)));
               sources = uniqueDocIds.map(docId => ({
                 title: docMap[docId]?.name || 'Unknown',
                 type: docMap[docId]?.type || 'PDF',
