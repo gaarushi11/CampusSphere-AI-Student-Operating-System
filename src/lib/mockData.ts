@@ -16,7 +16,7 @@ export const mockUser: Profile = {
 };
 
 // ── CLASS SESSIONS (TODAY) ─────────────────────────────────────
-export const todayClasses: ClassSession[] = [
+export const todayClasses: any[] = [
   {
     id: 'cls-001',
     title: 'Cloud Computing',
@@ -85,7 +85,7 @@ export const todayClasses: ClassSession[] = [
 ];
 
 // ── TASKS ──────────────────────────────────────────────────────
-export const mockTasks: Task[] = [
+export const mockTasks: any[] = [
   {
     id: 'task-001',
     title: 'Submit Cloud Computing Assignment',
@@ -144,7 +144,7 @@ export const mockTasks: Task[] = [
 ];
 
 // ── NOTICES ────────────────────────────────────────────────────
-export const mockNotices: Notice[] = [
+export const mockNotices: any[] = [
   {
     id: 'ntc-001',
     title: '🚨 Amazon SDE Placement Drive — Pre-Talk Registration',
@@ -193,7 +193,7 @@ export const mockNotices: Notice[] = [
 ];
 
 // ── DOCUMENTS ─────────────────────────────────────────────────
-export const mockDocuments: Document[] = [
+export const mockDocuments: any[] = [
   {
     id: 'doc-001',
     name: 'Cloud_Computing_Syllabus_CS401.pdf',
@@ -237,7 +237,7 @@ export const mockDocuments: Document[] = [
 ];
 
 // ── ATTENDANCE STATS ───────────────────────────────────────────
-export const attendanceStats: AttendanceStat[] = [
+export const attendanceStats: any[] = [
   { subject: 'Cloud Computing', shortCode: 'CS401', attended: 18, total: 22, percentage: 82, status: 'safe' },
   { subject: 'Operating Systems', shortCode: 'CS302', attended: 15, total: 22, percentage: 68, status: 'danger' },
   { subject: 'Machine Learning Lab', shortCode: 'CS403', attended: 20, total: 22, percentage: 91, status: 'safe' },
