@@ -50,7 +50,7 @@ export default function SchedulePage() {
     setIsSubmitting(true);
     
     if (editingClassId) {
-      await updateClass(editingClassId, formData);
+      await updateClass(editingClassId, formData as any);
     } else {
       await addClass(formData as any);
     }
