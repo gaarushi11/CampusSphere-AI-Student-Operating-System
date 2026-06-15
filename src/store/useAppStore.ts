@@ -537,6 +537,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       subject: doc.subject,
       is_indexed: doc.isIndexed || false,
       page_count: doc.pageCount || 1,
+      file_path: doc.filePath || null,
     };
 
     const { data, error } = await supabase
@@ -562,6 +563,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       pageCount: data.page_count,
       chunkCount: 0,
       indexError: null,
+      filePath: data.file_path,
     };
 
     set((state) => ({

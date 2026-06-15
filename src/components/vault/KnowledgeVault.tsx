@@ -100,6 +100,7 @@ export function KnowledgeVault() {
           subject: 'Uploaded Document',
           isIndexed: false,
           pageCount: 1,
+          filePath: filePath,
         });
 
         if (!documentId) continue;
